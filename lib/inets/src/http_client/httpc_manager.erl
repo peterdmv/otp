@@ -104,7 +104,7 @@ start_link(Profile, CookieDir, _) ->
 %%--------------------------------------------------------------------
 
 request(Request, ProfileName) ->
-    call(ProfileName, {request, Request}).
+    gen_server:call(ProfileName, {request, Request}, infinity).
 
 
 %%--------------------------------------------------------------------
@@ -118,7 +118,7 @@ request(Request, ProfileName) ->
 %%--------------------------------------------------------------------
 
 retry_request(Request, ProfileName) ->
-    cast(ProfileName, {retry_or_redirect_request, Request}).
+    gen_server:cast(ProfileName, {retry_or_redirect_request, Request}).
 
 
 %%--------------------------------------------------------------------
@@ -132,7 +132,7 @@ retry_request(Request, ProfileName) ->
 %%--------------------------------------------------------------------
 
 redirect_request(Request, ProfileName) ->
-    cast(ProfileName, {retry_or_redirect_request, Request}).
+    gen_server:cast(ProfileName, {retry_or_redirect_request, Request}).
 
 
 %%--------------------------------------------------------------------
@@ -144,7 +144,7 @@ redirect_request(Request, ProfileName) ->
 %%--------------------------------------------------------------------
 
 cancel_request(RequestId, ProfileName) ->
-    cast(ProfileName, {cancel_request, RequestId}).
+    gen_server:cast(ProfileName, {cancel_request, RequestId}).
 
 %%--------------------------------------------------------------------
 %% Function: request_done(RequestId, ProfileName) -> ok
@@ -155,7 +155,7 @@ cancel_request(RequestId, ProfileName) ->
 %%--------------------------------------------------------------------
 
 request_done(RequestId, ProfileName) ->
-    cast(ProfileName, {request_done, RequestId}).
+    gen_server:cast(ProfileName, {request_done, RequestId}).
 
 
 %%--------------------------------------------------------------------
@@ -293,7 +293,7 @@ which_session_info(ProfileName) ->
 %%--------------------------------------------------------------------
 
 set_options(Options, ProfileName) ->
-    cast(ProfileName, {set_options, Options}).
+    gen_server:cast(ProfileName, {set_options, Options}).
 
 
 %%--------------------------------------------------------------------
@@ -308,7 +308,7 @@ set_options(Options, ProfileName) ->
 %%--------------------------------------------------------------------
 
 get_options(Options, ProfileName) ->
-    call(ProfileName, {get_options, Options}).
+    gen_server:call(ProfileName, {get_options, Options}, infinity).
 
 
 %%--------------------------------------------------------------------
@@ -323,7 +323,7 @@ get_options(Options, ProfileName) ->
 store_cookies([], _, _) ->
     ok;
 store_cookies(Cookies, Address, ProfileName) ->
-    cast(ProfileName, {store_cookies, {Cookies, Address}}).
+    gen_server:cast(ProfileName, {store_cookies, {Cookies, Address}}).
 
 
 %%--------------------------------------------------------------------
@@ -336,7 +336,7 @@ store_cookies(Cookies, Address, ProfileName) ->
 %%--------------------------------------------------------------------
 
 reset_cookies(ProfileName) ->
-    call(ProfileName, reset_cookies).
+    gen_server:call(ProfileName, reset_cookies, inifinty).
 
 
 %%--------------------------------------------------------------------
@@ -354,7 +354,7 @@ reset_cookies(ProfileName) ->
 %%--------------------------------------------------------------------
 
 which_cookies(ProfileName) when is_atom(ProfileName) ->
-    call(ProfileName, which_cookies).
+    gen_server:call(ProfileName, which_cookies, infinity).
 
 which_cookies(Url, ProfileName) 
   when is_list(Url) andalso is_atom(ProfileName) ->
@@ -362,7 +362,7 @@ which_cookies(Url, ProfileName)
 
 which_cookies(Url, Options, ProfileName) 
   when is_list(Url) andalso is_list(Options) andalso is_atom(ProfileName) ->
-    call(ProfileName, {which_cookies, Url, Options}).
+    gen_server:call(ProfileName, {which_cookies, Url, Options}, inifinty).
 
 
 %%--------------------------------------------------------------------
@@ -375,7 +375,7 @@ which_cookies(Url, Options, ProfileName)
 %%--------------------------------------------------------------------
 
 info(ProfileName) ->
-    call(ProfileName, info).
+    gen_server:call(ProfileName, info, infinity).
 
 
 %%--------------------------------------------------------------------
@@ -926,16 +926,6 @@ uri_parse(URI, Opts) ->
 
 
 %%--------------------------------------------------------------------------
-
-
-call(ProfileName, Msg) ->
-    Timeout = infinity, 
-    call(ProfileName, Msg, Timeout).
-call(ProfileName, Msg, Timeout) ->
-    gen_server:call(ProfileName, Msg, Timeout).
-
-cast(ProfileName, Msg) ->
-   gen_server:cast(ProfileName, Msg).
 
 
 get_option(proxy, #options{proxy = Proxy}) ->
