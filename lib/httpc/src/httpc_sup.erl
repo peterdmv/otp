@@ -46,16 +46,33 @@ start_link() ->
 %%====================================================================
 %% Supervisor callbacks
 %%====================================================================
-
-%% Child :: {Id,StartFunc,Restart,Shutdown,Type,Modules}
 init([]) ->
-    SupFlags = #{strategy => one_for_all,
-                 intensity => 0,
-                 period => 1},
-    ChildSpec = #{},
-    {ok, {SupFlags, [ChildSpec]}}.
-%%    {ok, { {one_for_all, 0, 1}, []} }.
+    init([[]]);
+init([Config]) ->
+    SupFlags = #{strategy => one_for_one,
+                 intensity => 10,
+                 period => 3600},
+    {ok, {SupFlags, child_specs(Config)}}.
+
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
+child_specs(Config) ->
+    [httpc_session_sup(Config), httpc_worker_sup()].
+
+httpc_session_sup(Config) ->
+    #{id => httpc_session_sup,
+      start => {httpc_session_sup, start_link, [Config]},
+      restart => permanent,
+      shutdown => infinity,
+      type => supervisor,
+      modules => [httpc_session_sup]}.
+
+httpc_worker_sup() ->
+    #{id => httpc_worker_sup,
+      start => {httpc_worker_sup, start_link, []},
+      restart => permanent,
+      shutdown => infinity,
+      type => supervisor,
+      modules => [httpc_worker_sup]}.

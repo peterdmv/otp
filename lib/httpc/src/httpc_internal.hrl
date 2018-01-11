@@ -1,7 +1,7 @@
 %%
 %% %CopyrightBegin%
 %%
-%% Copyright Ericsson AB 2002-2018. All Rights Reserved.
+%% Copyright Ericsson AB 2005-2016. All Rights Reserved.
 %%
 %% Licensed under the Apache License, Version 2.0 (the "License");
 %% you may not use this file except in compliance with the License.
@@ -19,27 +19,9 @@
 %%
 %%
 
--module(httpc).
+-ifndef(httpc_internal_hrl).
+-define(httpc_internal_hrl, true).
 
--export([start/0,
-         start_session/1,
-         stop/0,
-         request/1
-        ]).
+-define(DEFAULT_SESSION, default).
 
-
-%%%=========================================================================
-%%%  API
-%%%=========================================================================
-
-start() ->
-    application:start(httpc).
-
-start_session(Config) ->
-    httpc_session_sup:start_child(Config).
-
-stop() ->
-    application:stop(httpc).
-
-request(_Uri) ->
-    ok.
+-endif. % -ifdef(httpc_internal_hrl).

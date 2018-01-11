@@ -43,7 +43,11 @@ BEHAVIOUR_MODULES=
 MODULES= \
 	httpc \
 	httpc_app \
-	httpc_sup
+	httpc_manager \
+	httpc_session_sup \
+	httpc_sup \
+	httpc_worker \
+	httpc_worker_sup
 
 INTERNAL_HRL_FILES = 
 
