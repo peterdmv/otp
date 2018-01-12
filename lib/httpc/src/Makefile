@@ -46,8 +46,8 @@ MODULES= \
 	httpc_manager \
 	httpc_session_sup \
 	httpc_sup \
-	httpc_worker \
-	httpc_worker_sup
+	httpc_request_handler \
+	httpc_handler_sup
 
 INTERNAL_HRL_FILES = 
 

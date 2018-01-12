@@ -18,7 +18,7 @@
 %% %CopyrightEnd%
 %%
 %%
--module(httpc_worker).
+-module(httpc_request_handler).
 
 -behaviour(gen_server).
 
