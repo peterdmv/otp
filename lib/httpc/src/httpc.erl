@@ -27,9 +27,103 @@
          start_session/1,
          stop/0,
          request/1,
-         request/2
+         request/2,
+         request/4,
+         request/5
         ]).
 
+%%%=========================================================================
+%%%  Data Types
+%%%=========================================================================
+-type method() :: head | get | put | post | trace | options | delete | patch.
+
+-type request() :: {uri(), headers()}
+                 | {uri(), headers(), content_type(), body()}.
+
+-type uri() :: uri_string:uri_string().
+
+-type status_line() :: {http_version(), status_code(), reason_phrase()}.
+
+-type http_version() :: string().
+
+-type status_code() :: integer().
+
+-type reason_phrase() :: string().
+
+-type content_type() :: string().
+
+-type headers() :: [header()].
+
+-type header() :: {field(), value()}.
+
+-type field() :: string().
+
+-type value() :: string().
+
+-type body() :: string()
+              | binary()
+              | {fun((accumulator()) -> body_processing_result()), accumulator()}
+              | {chunkify, fun((accumulator()) -> body_processing_result()), accumulator()}.
+
+-type body_processing_result() :: eof
+                                | {ok, iolist(), accumulator()}.
+
+-type accumulator() :: term().
+
+-type filename() :: string().
+
+-type http_options() :: [http_option()].
+
+-type http_option() :: {timeout, timeout()}
+                     | {connect_timeout, timeout()}
+                     | {ssl, ssl_options()}
+                     | {essl, ssl_options()}
+                     | {autoredirect, boolean()}
+                     | {proxy_auth, {user_string(), password_string()}}
+                     | {version, http_version()}
+                     | {relaxed, boolean()}
+                     | {url_encode, boolean()}.
+
+-type ssl_options() :: [ssl:ssl_option()].
+
+-type user_string() :: string().
+
+-type password_string() :: string().
+
+-type options() :: [option()].
+
+-type option() :: {sync, boolean()}
+                | {stream, stream_to()}
+                | {body_format, body_format()}
+                | {full_result, boolean()}
+                | {headers_as_is, boolean()}
+                | {socket_opts, socket_options()}
+                | {receiver, receiver()}
+                | {ipv6_host_with_brackets, boolean()}.
+
+-type stream_to() :: none
+                   | self
+                   | {self, once}
+                   | filename().
+
+-type socket_options() :: [ssl:option()].
+
+-type receiver() :: pid()
+                  | fun((term()) -> term())
+                  | {Module :: atom(), Function :: atom(), Args :: list()}.
+
+-type body_format() :: string | binary.
+-type result() :: {status_line(), headers(), body()}
+                | {status_code(), body()}
+                | request_id().
+
+-type request_id() :: reference().
+
+-type profile() :: atom().
+
+-type reason() :: {connect_failed, term()}
+                | {send_failed, term()}
+                | term().
 
 %%%=========================================================================
 %%%  API
@@ -44,12 +138,50 @@ start_session(Config) ->
 stop() ->
     application:stop(httpc).
 
+
+%%--------------------------------------------------------------------------
+%% Description: Sends a HTTP-request. The function can be both
+%% syncronus and asynchronous in the later case the function will
+%% return {ok, RequestId} and later on a message will be sent to the
+%% calling process on the format {http, {RequestId, {StatusLine,
+%% Headers, Body}}} or {http, {RequestId, {error, Reason}}}
+%%--------------------------------------------------------------------------
+-spec request(Uri) -> Response when
+      Uri :: uri(),
+      Response :: {ok, result()}
+                | {error, reason()}.
 request(Uri) ->
     request(Uri, ?DEFAULT_SESSION).
 
-request(Uri, Session) ->
-    request(get, {Uri, []}, [], [], Session).
 
+-spec request(Uri, Profile) -> Response when
+      Uri :: uri(),
+      Profile :: atom(),
+      Response :: {ok, status_line(), headers(), body()}
+                | {error, Reason :: term()}.
+request(Uri, Profile) ->
+    request(get, {Uri, []}, [], [], Profile).
+
+
+-spec request(Method, Request, HTTPOptions, Options) -> Response when
+      Method :: method(),
+      Request :: request(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Response :: {ok, status_line(), headers(), body()}
+                | {error, Reason :: term()}.
+request(Method, Request, HttpOptions, Options) ->
+    request(Method, Request, HttpOptions, Options, ?DEFAULT_SESSION).
+
+
+-spec request(Method, Request, HTTPOptions, Options, Profile) -> Response when
+      Method :: method(),
+      Request :: request(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Profile :: profile(),
+      Response :: {ok, status_line(), headers(), body()}
+                | {error, Reason :: term()}.
 request(Method,
         {Uri, Headers},
         _HTTPOptions, _Options, Session)
@@ -92,6 +224,7 @@ create_request(Method, URI, Session, Body) ->
       session => Session,
       body    => Body
      }.
+
 
 handle_answer(RequestId) ->
     receive
