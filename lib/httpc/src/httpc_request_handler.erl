@@ -23,7 +23,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/0]).
+-export([start_link/4]).
 
 %% Gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -33,15 +33,16 @@
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
-start_link() ->
+start_link(_Parent, _Request = #{from := From, requestid := RequestId}, _Options, _ProfileName) ->
     Opts = [],
-    gen_server:start_link(?MODULE, [], Opts).
+    gen_server:start_link(?MODULE, {From, RequestId}, Opts).
 
 
 %%%=========================================================================
 %%%  Gen_server callbacks
 %%%=========================================================================
-init(_Args) ->
+init({From, RequestId}) ->
+    self() ! {fake_http_answer, From, RequestId},
     {ok, []}.
 
 handle_call(_, _, State) ->
@@ -49,6 +50,10 @@ handle_call(_, _, State) ->
 
 handle_cast(_, State) ->
     {noreply, State}.
+
+handle_info({fake_http_answer, From, RequestId}, State) ->
+    From ! {http, {RequestId, {"200 OK", "test", ""}}},
+    {noreply, State};
 
 handle_info(_, State) ->
     {noreply, State}.

@@ -59,7 +59,7 @@ init([Config]) ->
 %% Internal functions
 %%====================================================================
 child_specs(Config) ->
-    [httpc_session_sup(Config), httpc_worker_sup()].
+    [httpc_session_sup(Config), httpc_handler_sup()].
 
 httpc_session_sup(Config) ->
     #{id => httpc_session_sup,
@@ -69,10 +69,10 @@ httpc_session_sup(Config) ->
       type => supervisor,
       modules => [httpc_session_sup]}.
 
-httpc_worker_sup() ->
+httpc_handler_sup() ->
     #{id => httpc_worker_sup,
-      start => {httpc_worker_sup, start_link, []},
+      start => {httpc_handler_sup, start_link, []},
       restart => permanent,
       shutdown => infinity,
       type => supervisor,
-      modules => [httpc_worker_sup]}.
+      modules => [httpc_handler_sup]}.

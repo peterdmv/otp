@@ -23,7 +23,7 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/1]).
+-export([start_link/1, request/1]).
 
 %% Gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
@@ -41,12 +41,23 @@ start_link(Session) ->
     gen_server:start_link(Server, ?MODULE, Args, Opts).
 
 
+request(Request = #{session := Session}) ->
+    gen_server:call(session_name(Session), {request, Request}, infinity).
+
 %%%=========================================================================
 %%%  Gen_server callbacks
 %%%=========================================================================
 init({_Session}) ->
     {ok, []}.
 
+
+handle_call({request, Request}, _, State) ->
+    case (catch handle_request(Request, State)) of
+	{reply, Msg, NewState} ->
+	    {reply, Msg, NewState};
+	Error ->
+	    {stop, Error, http_error(Request, Error), State}
+    end;
 handle_call(_, _, State) ->
     {reply, ok, State}.
 
@@ -68,3 +79,18 @@ code_change(_OldVsn, State, _Extra) ->
 %%====================================================================
 session_name(Session) ->
     list_to_atom(atom_to_list(?MODULE) ++ "_" ++ atom_to_list(Session)).
+
+
+http_error(#{id := Id}, Reason) ->
+    {Id, {error, Reason}}.
+
+handle_request(Request, State) ->
+    RequestId = make_ref(),
+    start_handler(Request#{requestid => RequestId}),
+    {reply, {ok, make_ref()}, State}.
+
+
+start_handler(Request = #{session := Session}) ->
+    {ok, Pid} = httpc_handler_sup:start_child([whereis(httpc_handler_sup),
+                                               Request, [], session_name(Session)]),
+    erlang:monitor(process, Pid).
