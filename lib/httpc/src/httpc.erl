@@ -79,7 +79,7 @@
                      | {ssl, ssl_options()}
                      | {essl, ssl_options()}
                      | {autoredirect, boolean()}
-                     | {proxy_auth, {user_string(), password_string()}}
+                     | {proxy_auth, {user_string(), password_string()}|undefined}
                      | {version, http_version()}
                      | {relaxed, boolean()}
                      | {url_encode, boolean()}.
@@ -257,33 +257,31 @@ prep_handle_request(Method,
 	{error, Reason, _} ->
 	    {error, Reason};
 	ParsedUri ->
-            handle_request(Method, Uri, ParsedUri, Headers, ContentType, Body,
+            handle_request(Method, ParsedUri, Headers, ContentType, Body,
                            HTTPOptions, Options, Session)
     end.
 
 
-
-handle_request(Method, _Uri,
-               URI, _, _,
-	       _Headers0, _ContentType, Body0,
-	       Session) ->
-    Request = create_request(Method, URI, Session, Body0),
+handle_request(Method,
+               Uri, Headers, ContentType, Body,
+	       HTTPOptions, Options, Session) ->
+    Request =
+        #{from         => self(),
+          method       => Method,
+          uri          => Uri,
+          headers      => Headers,
+          content_type => ContentType,
+          body         => Body,
+          http_options => add_default_http_options(HTTPOptions),
+          options      => Options,
+          session      => Session
+         },
     case httpc_manager:request(Request) of
         {ok, RequestId} ->
-            io:format("# RequestId: ~p", [RequestId]),
             handle_answer(RequestId);
         {error, Reason} ->
             {error, Reason}
     end.
-
-
-create_request(Method, URI, Session, Body) ->
-    #{from => self(),
-      method  => Method,
-      uri     => URI,
-      session => Session,
-      body    => Body
-     }.
 
 
 handle_answer(RequestId) ->
@@ -305,3 +303,29 @@ check_body(Body) when is_list(Body) orelse is_binary(Body) ->
     ok;
 check_body(Body) ->
     {error, {bad_body_generator, Body}}.
+
+
+add_default_http_options(HTTPOptions) ->
+    add_default_http_options(http_options_default(), HTTPOptions).
+%%
+add_default_http_options(Default, HTTPOptions) ->
+    Fun = fun(K,V) ->
+                  case maps:is_key(K, HTTPOptions) of
+                      true ->
+                          maps:get(K, HTTPOptions);
+                      false ->
+                          V
+                  end
+          end,
+    maps:map(Fun, Default).
+
+
+http_options_default() ->
+    #{version         => "HTTP/1.1",
+      timeout         => infinity,
+      autoredirect    => true,
+      ssl             => [],
+      proxy_auth      => undefined,
+      relaxed         => false,
+      connect_timeout => infinity
+     }.
