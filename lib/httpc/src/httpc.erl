@@ -157,8 +157,8 @@ request(Uri) ->
 -spec request(Uri, Profile) -> Response when
       Uri :: uri(),
       Profile :: atom(),
-      Response :: {ok, status_line(), headers(), body()}
-                | {error, Reason :: term()}.
+      Response :: {ok, result()}
+                | {error, reason()}.
 request(Uri, Profile) ->
     request(get, {Uri, []}, [], [], Profile).
 
@@ -168,8 +168,9 @@ request(Uri, Profile) ->
       Request :: request(),
       HTTPOptions :: http_options(),
       Options :: options(),
-      Response :: {ok, status_line(), headers(), body()}
-                | {error, Reason :: term()}.
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
 request(Method, Request, HttpOptions, Options) ->
     request(Method, Request, HttpOptions, Options, ?DEFAULT_SESSION).
 
@@ -180,31 +181,90 @@ request(Method, Request, HttpOptions, Options) ->
       HTTPOptions :: http_options(),
       Options :: options(),
       Profile :: profile(),
-      Response :: {ok, status_line(), headers(), body()}
-                | {error, Reason :: term()}.
-request(Method,
-        {Uri, Headers},
-        _HTTPOptions, _Options, Session)
-  when (Method =:= options) orelse
-       (Method =:= get) orelse
-       (Method =:= head) orelse
-       (Method =:= delete) orelse
-       (Method =:= trace) andalso
-       is_atom(Session) ->
-    case uri_string:parse(uri_string:normalize(Uri)) of
-	{error, Reason, _} ->
-	    {error, Reason};
-	ParsedUri ->
-            handle_request(Method, Uri, ParsedUri, Headers, [], [],
-                           Session)
-    end.
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
+request(Method, Request, HTTPOptions, Options, Profile) when
+      (is_tuple(Request) andalso (tuple_size(Request) =:= 2) andalso is_atom(Profile)) ->
+    do_request(Method, Request, HTTPOptions, Options, Profile);
+request(Method, Request, HTTPOptions, Options, Profile) when
+      (is_tuple(Request) andalso (tuple_size(Request) =:= 4) andalso is_atom(Profile)) ->
+    do_request_with_body(Method, Request, HTTPOptions, Options, Profile).
+
 
 
 %%%========================================================================
 %%% Internal functions
 %%%========================================================================
+
+-spec do_request(Method,
+                 {Uri, Headers},
+                 HTTPOptions, Options, Session) -> Response when
+      Method :: method(),
+      Uri :: uri(),
+      Headers :: headers(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Session :: profile(),
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
+do_request(Method,
+           {Uri, Headers},
+           HTTPOptions, Options, Session)
+  when (Method =:= options) orelse (Method =:= get) orelse
+       (Method =:= head) orelse (Method =:= delete) orelse
+       (Method =:= trace) ->
+    prep_handle_request(Method,
+                        Uri, Headers, [], [],
+                        HTTPOptions, Options,Session).
+
+
+-spec do_request_with_body(Method,
+                           {Uri, Headers, ContentType, Body},
+                           HTTPOptions, Options, Session) -> Response when
+      Method :: method(),
+      Uri :: uri(),
+      Headers :: headers(),
+      ContentType :: content_type(),
+      Body :: body(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Session :: profile(),
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
+do_request_with_body(Method,
+                     {Uri, Headers, ContentType, Body},
+                     HTTPOptions, Options, Session)
+  when ((Method =:= post) orelse (Method =:= path) orelse
+       (Method =:= put) orelse (Method =:= delete))
+       andalso is_list(ContentType) ->
+    case check_body(Body) of
+        ok ->
+            prep_handle_request(Method,
+                                Uri, Headers, ContentType, Body,
+                                HTTPOptions, Options, Session);
+        Error ->
+            Error
+    end.
+
+
+prep_handle_request(Method,
+                    Uri, Headers, ContentType, Body,
+                    HTTPOptions, Options, Session) ->
+    case uri_string:parse(uri_string:normalize(Uri)) of
+	{error, Reason, _} ->
+	    {error, Reason};
+	ParsedUri ->
+            handle_request(Method, Uri, ParsedUri, Headers, ContentType, Body,
+                           HTTPOptions, Options, Session)
+    end.
+
+
+
 handle_request(Method, _Uri,
-               URI,
+               URI, _, _,
 	       _Headers0, _ContentType, Body0,
 	       Session) ->
     Request = create_request(Method, URI, Session, Body0),
@@ -235,3 +295,13 @@ handle_answer(RequestId) ->
     after 3000 ->
             timeout
     end.
+
+
+check_body({Fun, _}) when is_function(Fun) ->
+    ok;
+check_body({chunkify, Fun, _}) when is_function(Fun) ->
+    ok;
+check_body(Body) when is_list(Body) orelse is_binary(Body) ->
+    ok;
+check_body(Body) ->
+    {error, {bad_body_generator, Body}}.
