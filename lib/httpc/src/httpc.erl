@@ -32,6 +32,11 @@
          request/5
         ]).
 
+-export_type([reason/0,
+              request/0
+             ]).
+
+
 %%%=========================================================================
 %%%  Data Types
 %%%=========================================================================
@@ -192,6 +197,49 @@ request(Method, Request, HTTPOptions, Options, Profile) when
     do_request_with_body(Method, Request, HTTPOptions, Options, Profile).
 
 
+%%--------------------------------------------------------------------------
+%% New API
+%%--------------------------------------------------------------------------
+-spec get(Uri) -> Response when
+      Uri :: uri(),
+      Response :: {ok, result()}
+                | {error, reason()}.
+get(Uri) ->
+    get(Uri, ?DEFAULT_SESSION).
+
+-spec get(Uri, Profile) -> Response when
+      Uri :: uri(),
+      Profile :: atom(),
+      Response :: {ok, result()}
+                | {error, reason()}.
+get(Uri, Profile) ->
+    get({Uri, []}, [], [], Profile).
+
+-spec get(Request, HTTPOptions, Options) -> Response when
+      Request :: request(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
+get(Request, HttpOptions, Options) ->
+    get(Request, HttpOptions, Options, ?DEFAULT_SESSION).
+
+-spec get(Request, HTTPOptions, Options, Profile) -> Response when
+      Request :: request(),
+      HTTPOptions :: http_options(),
+      Options :: options(),
+      Profile :: profile(),
+      Response :: {ok, result()}
+                | {ok, saved_to_file}
+                | {error, reason()}.
+get(Request, HTTPOptions, Options, Profile) when
+      (is_tuple(Request) andalso (tuple_size(Request) =:= 2) andalso is_atom(Profile)) ->
+    do_request(get, Request, HTTPOptions, Options, Profile);
+get(Request, HTTPOptions, Options, Profile) when
+      (is_tuple(Request) andalso (tuple_size(Request) =:= 4) andalso is_atom(Profile)) ->
+    do_request_with_body(get, Request, HTTPOptions, Options, Profile).
+
 
 %%%========================================================================
 %%% Internal functions
@@ -273,7 +321,7 @@ handle_request(Method,
           content_type => ContentType,
           body         => Body,
           http_options => add_default_http_options(HTTPOptions),
-          options      => Options,
+          options      => add_default_request_options(Options),
           session      => Session
          },
     case httpc_manager:request(Request) of
@@ -286,6 +334,8 @@ handle_request(Method,
 
 handle_answer(RequestId) ->
     receive
+        {http, {RequestId, saved_to_file}} ->
+            {ok, saved_to_file};
 	{http, {RequestId, {StatusLine, Headers, Body}}} ->
             {ok, {StatusLine, Headers, Body}};
 	{http, {RequestId, {error, Reason}}} ->
@@ -306,18 +356,7 @@ check_body(Body) ->
 
 
 add_default_http_options(HTTPOptions) ->
-    add_default_http_options(http_options_default(), HTTPOptions).
-%%
-add_default_http_options(Default, HTTPOptions) ->
-    Fun = fun(K,V) ->
-                  case maps:is_key(K, HTTPOptions) of
-                      true ->
-                          maps:get(K, HTTPOptions);
-                      false ->
-                          V
-                  end
-          end,
-    maps:map(Fun, Default).
+    add_default_options(http_options_default(), maps:from_list(HTTPOptions)).
 
 
 http_options_default() ->
@@ -329,3 +368,30 @@ http_options_default() ->
       relaxed         => false,
       connect_timeout => infinity
      }.
+
+
+add_default_request_options(Options) ->
+    add_default_options(request_options_default(), maps:from_list(Options)).
+
+
+request_options_default() ->
+    #{sync => true,
+      stream => none,
+      body_format => string,
+      full_result => true,
+      header_as_is => false,
+      receiver => self(),
+      socket_opts => undefined
+     }.
+
+
+add_default_options(Default, Options) ->
+    Fun = fun(K,V) ->
+                  case maps:is_key(K, Options) of
+                      true ->
+                          maps:get(K, Options);
+                      false ->
+                          V
+                  end
+          end,
+    maps:map(Fun, Default).

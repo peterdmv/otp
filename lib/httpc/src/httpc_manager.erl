@@ -33,6 +33,10 @@
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
+-spec start_link(Session) -> Response when
+      Session :: atom(),
+      Response :: {ok, pid()} | ignore | {error, Error},
+      Error :: {already_started, pid()} | term().
 start_link(Session) ->
     SessionName = session_name(Session),
     Server = {local, SessionName},
@@ -41,8 +45,12 @@ start_link(Session) ->
     gen_server:start_link(Server, ?MODULE, Args, Opts).
 
 
+-spec request(Request) -> Response when
+      Request :: httpc:request(),
+      Response :: {ok, reference()} | {error, httpc:reason()}.
 request(Request = #{session := Session}) ->
     gen_server:call(session_name(Session), {request, Request}, infinity).
+
 
 %%%=========================================================================
 %%%  Gen_server callbacks
@@ -87,7 +95,7 @@ http_error(#{id := Id}, Reason) ->
 handle_request(Request, State) ->
     RequestId = make_ref(),
     start_handler(Request#{requestid => RequestId}),
-    {reply, {ok, make_ref()}, State}.
+    {reply, {ok, RequestId}, State}.
 
 
 start_handler(Request = #{session := Session}) ->
