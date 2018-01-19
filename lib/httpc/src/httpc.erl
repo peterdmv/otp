@@ -32,6 +32,14 @@
          request/5
         ]).
 
+%% New API
+-export([get/1,
+         get/2,
+         get/3,
+         post/3
+        ]).
+
+
 -export_type([reason/0,
               request/0
              ]).
@@ -130,6 +138,51 @@
                 | {send_failed, term()}
                 | term().
 
+
+%% New options types
+-type httpc_options() :: #{http => [httpc_option()],
+                           session => [session_option()],
+                           socket => [socket_option()]}
+                       | #{}.
+
+-type httpc_option() :: {version, http_version()}
+                      | {timeout, timeout()}
+                      | {autoredirect, boolean()}
+                      | {ssl, ssl_options()}
+                      | {proxy_auth, {user_string(), password_string()} | undefined}
+                      | {relaxed, boolean()}
+                      | {connect_timeout, timeout()}
+                      | {sync, boolean()}
+                      | {stream, stream_to()}
+                      | {body_format, body_format()}
+                      | {full_result, boolean()}
+                      | {headers_as_is, boolean()}
+                      | {receiver, receiver()}.
+
+-type session_option() :: {proxy, {proxy(), no_proxy()} | undefined}
+                        | {https_proxy, {proxy(), no_proxy()} | undefined}
+                        | {max_keep_alive_length, integer()}
+                        | {keep_alive_timeout, integer()}
+                        | {max_sessions, integer()}
+                        | {cookies, cookie_mode()}
+                        | {verbose, verbose_mode()}.
+
+-type socket_option() :: {ip, inet:ip_address() | default}
+                        | {port, integer() | default}
+                        | {socket_opts, inet:socket_setopt()}.
+
+-type proxy() :: {hostname(), integer()}.
+
+-type hostname() :: string().
+
+-type no_proxy() :: [string()].
+
+-type cookie_mode() :: enabled | disabled | verify.
+
+-type verbose_mode() :: false | verbose | debug | trace.
+
+
+
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
@@ -191,10 +244,12 @@ request(Method, Request, HttpOptions, Options) ->
                 | {error, reason()}.
 request(Method, Request, HTTPOptions, Options, Profile) when
       (is_tuple(Request) andalso (tuple_size(Request) =:= 2) andalso is_atom(Profile)) ->
-    do_request(Method, Request, HTTPOptions, Options, Profile);
+    Opts = #{http_options => HTTPOptions, request_options => Options},
+    do_request(Method, Request, Opts, Profile);
 request(Method, Request, HTTPOptions, Options, Profile) when
       (is_tuple(Request) andalso (tuple_size(Request) =:= 4) andalso is_atom(Profile)) ->
-    do_request_with_body(Method, Request, HTTPOptions, Options, Profile).
+    Opts = #{http_options => HTTPOptions, request_options => Options},
+    do_request_with_body(Method, Request, Opts, Profile).
 
 
 %%--------------------------------------------------------------------------
@@ -205,40 +260,34 @@ request(Method, Request, HTTPOptions, Options, Profile) when
       Response :: {ok, result()}
                 | {error, reason()}.
 get(Uri) ->
-    get(Uri, ?DEFAULT_SESSION).
+    get({Uri, []}, #{}).
 
--spec get(Uri, Profile) -> Response when
-      Uri :: uri(),
-      Profile :: atom(),
-      Response :: {ok, result()}
-                | {error, reason()}.
-get(Uri, Profile) ->
-    get({Uri, []}, [], [], Profile).
-
--spec get(Request, HTTPOptions, Options) -> Response when
+-spec get(Request, Options) -> Response when
       Request :: request(),
-      HTTPOptions :: http_options(),
-      Options :: options(),
+      Options :: httpc_options(),
       Response :: {ok, result()}
                 | {ok, saved_to_file}
                 | {error, reason()}.
-get(Request, HttpOptions, Options) ->
-    get(Request, HttpOptions, Options, ?DEFAULT_SESSION).
+get(Request, Options) ->
+    get(Request, Options, ?DEFAULT_SESSION).
 
--spec get(Request, HTTPOptions, Options, Profile) -> Response when
+-spec get(Request, Options, Profile) -> Response when
       Request :: request(),
-      HTTPOptions :: http_options(),
-      Options :: options(),
+      Options :: httpc_options(),
       Profile :: profile(),
       Response :: {ok, result()}
                 | {ok, saved_to_file}
                 | {error, reason()}.
-get(Request, HTTPOptions, Options, Profile) when
+get(Request, Options, Profile) when
       (is_tuple(Request) andalso (tuple_size(Request) =:= 2) andalso is_atom(Profile)) ->
-    do_request(get, Request, HTTPOptions, Options, Profile);
-get(Request, HTTPOptions, Options, Profile) when
+    Opts = #{httpc_options => Options},
+    do_request(get, Request, Opts, Profile).
+
+
+post(Request, Options, Profile) when
       (is_tuple(Request) andalso (tuple_size(Request) =:= 4) andalso is_atom(Profile)) ->
-    do_request_with_body(get, Request, HTTPOptions, Options, Profile).
+    Opts = #{httpc_options => Options},
+    do_request_with_body(post, Request, Opts, Profile).
 
 
 %%%========================================================================
@@ -247,44 +296,46 @@ get(Request, HTTPOptions, Options, Profile) when
 
 -spec do_request(Method,
                  {Uri, Headers},
-                 HTTPOptions, Options, Session) -> Response when
+                 Opts, Session) -> Response when
       Method :: method(),
       Uri :: uri(),
       Headers :: headers(),
-      HTTPOptions :: http_options(),
-      Options :: options(),
+      Opts :: #{http_options    => http_options(),
+                request_options => options()}
+            | #{httpc_options   => httpc_options()},
       Session :: profile(),
       Response :: {ok, result()}
                 | {ok, saved_to_file}
                 | {error, reason()}.
 do_request(Method,
            {Uri, Headers},
-           HTTPOptions, Options, Session)
+           Opts, Session)
   when (Method =:= options) orelse (Method =:= get) orelse
        (Method =:= head) orelse (Method =:= delete) orelse
        (Method =:= trace) ->
     prep_handle_request(Method,
                         Uri, Headers, [], [],
-                        HTTPOptions, Options,Session).
+                        Opts, Session).
 
 
 -spec do_request_with_body(Method,
                            {Uri, Headers, ContentType, Body},
-                           HTTPOptions, Options, Session) -> Response when
+                           Opts, Session) -> Response when
       Method :: method(),
       Uri :: uri(),
       Headers :: headers(),
       ContentType :: content_type(),
       Body :: body(),
-      HTTPOptions :: http_options(),
-      Options :: options(),
+      Opts :: #{http_options    => http_options(),
+                request_options => options()}
+            | #{httpc_options   => httpc_options()},
       Session :: profile(),
       Response :: {ok, result()}
                 | {ok, saved_to_file}
                 | {error, reason()}.
 do_request_with_body(Method,
                      {Uri, Headers, ContentType, Body},
-                     HTTPOptions, Options, Session)
+                     Opts, Session)
   when ((Method =:= post) orelse (Method =:= path) orelse
        (Method =:= put) orelse (Method =:= delete))
        andalso is_list(ContentType) ->
@@ -292,7 +343,7 @@ do_request_with_body(Method,
         ok ->
             prep_handle_request(Method,
                                 Uri, Headers, ContentType, Body,
-                                HTTPOptions, Options, Session);
+                                Opts, Session);
         Error ->
             Error
     end.
@@ -300,36 +351,67 @@ do_request_with_body(Method,
 
 prep_handle_request(Method,
                     Uri, Headers, ContentType, Body,
-                    HTTPOptions, Options, Session) ->
+                    Opts, Session) ->
     case uri_string:parse(uri_string:normalize(Uri)) of
 	{error, Reason, _} ->
 	    {error, Reason};
 	ParsedUri ->
             handle_request(Method, ParsedUri, Headers, ContentType, Body,
-                           HTTPOptions, Options, Session)
+                           Opts, Session)
     end.
 
 
 handle_request(Method,
                Uri, Headers, ContentType, Body,
-	       HTTPOptions, Options, Session) ->
-    Request =
-        #{from         => self(),
-          method       => Method,
-          uri          => Uri,
-          headers      => Headers,
-          content_type => ContentType,
-          body         => Body,
-          http_options => add_default_http_options(HTTPOptions),
-          options      => add_default_request_options(Options),
-          session      => Session
-         },
+	       Opts, Session) ->
+    Request = create_request(Method, Uri, Headers, ContentType, Body, Opts, Session),
     case httpc_manager:request(Request) of
         {ok, RequestId} ->
             handle_answer(RequestId);
         {error, Reason} ->
             {error, Reason}
     end.
+
+
+create_request(Method,
+               Uri, Headers, ContentType, Body,
+	       #{http_options := HTTPOptions, request_options := RequestOptions},
+               Session) ->
+    {HTTPOpts, SessionOpts, SocketOpts} = convert_options(HTTPOptions, RequestOptions),
+    #{from         => self(),
+      method       => Method,
+      uri          => Uri,
+      headers      => Headers,
+      content_type => ContentType,
+      body         => Body,
+      http_opts    => HTTPOpts,
+      session_opts => SessionOpts,
+      socket_opts  => SocketOpts,
+      session      => Session
+     };
+create_request(Method,
+               Uri, Headers, ContentType, Body,
+	       #{httpc_options := #{} = Options},
+               Session) ->
+    #{from         => self(),
+      method       => Method,
+      uri          => Uri,
+      headers      => Headers,
+      content_type => ContentType,
+      body         => Body,
+      http_opts    => add_default_http_opts(maps:get(http, Options, [])),
+      session_opts => add_default_session_opts(maps:get(session, Options, [])),
+      socket_opts  => add_default_socket_opts(maps:get(socket, Options, [])),
+      session      => Session
+     }.
+
+
+%% Convert legacy options to the new options format
+convert_options(HTTPOptions, RequestOptions) ->
+    HTTPOpts = add_default_http_opts(HTTPOptions ++ RequestOptions),
+    SessionOpts = session_opts_default(),
+    SocketOpts = [],
+    {HTTPOpts, SessionOpts, SocketOpts}.
 
 
 handle_answer(RequestId) ->
@@ -355,34 +437,16 @@ check_body(Body) ->
     {error, {bad_body_generator, Body}}.
 
 
-add_default_http_options(HTTPOptions) ->
-    add_default_options(http_options_default(), maps:from_list(HTTPOptions)).
+add_default_http_opts(HTTPOpts) ->
+    add_default_options(http_opts_default(), maps:from_list(HTTPOpts)).
 
 
-http_options_default() ->
-    #{version         => "HTTP/1.1",
-      timeout         => infinity,
-      autoredirect    => true,
-      ssl             => [],
-      proxy_auth      => undefined,
-      relaxed         => false,
-      connect_timeout => infinity
-     }.
+add_default_session_opts(SessionOpts) ->
+    add_default_options(session_opts_default(), maps:from_list(SessionOpts)).
 
 
-add_default_request_options(Options) ->
-    add_default_options(request_options_default(), maps:from_list(Options)).
-
-
-request_options_default() ->
-    #{sync => true,
-      stream => none,
-      body_format => string,
-      full_result => true,
-      header_as_is => false,
-      receiver => self(),
-      socket_opts => undefined
-     }.
+add_default_socket_opts(SocketOpts) ->
+    add_default_options(socket_opts_default(), maps:from_list(SocketOpts)).
 
 
 add_default_options(Default, Options) ->
@@ -395,3 +459,36 @@ add_default_options(Default, Options) ->
                   end
           end,
     maps:map(Fun, Default).
+
+
+http_opts_default() ->
+    #{version         => "HTTP/1.1",
+      timeout         => infinity,
+      autoredirect    => true,
+      ssl             => [],
+      proxy_auth      => undefined,
+      relaxed         => false,
+      connect_timeout => infinity,
+      sync            => true,
+      stream          => none,
+      body_format     => string,
+      full_result     => true,
+      header_as_is    => false,
+      receiver        => self()
+     }.
+
+
+session_opts_default() ->
+    #{proxy                 => undefined,
+      https_proxy           => undefined,
+      max_keep_alive_length => 5,
+      keep_alive_timeout    => 120000,
+      max_sessions          => 2,
+      cookies               => disabled,
+      verbose               => false}.
+
+
+socket_opts_default() ->
+    #{ip => default,
+      port => default,
+      socket_opts => []}.

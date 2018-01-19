@@ -45,6 +45,9 @@ start_link(Session) ->
     gen_server:start_link(Server, ?MODULE, Args, Opts).
 
 
+%%--------------------------------------------------------------------------
+%% Description: Sends a request to the httpc manager process.
+%%--------------------------------------------------------------------------
 -spec request(Request) -> Response when
       Request :: httpc:request(),
       Response :: {ok, reference()} | {error, httpc:reason()}.
