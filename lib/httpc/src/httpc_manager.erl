@@ -29,6 +29,15 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
 	 code_change/3]).
 
+-record(state,
+        {
+          refs = #{},
+          session_db = #{},
+          session_options = #{},
+          socket_options = #{}
+        }
+       ).
+
 
 %%%=========================================================================
 %%%  API
@@ -59,7 +68,7 @@ request(Request = #{session := Session}) ->
 %%%  Gen_server callbacks
 %%%=========================================================================
 init({_Session}) ->
-    {ok, []}.
+    {ok, #state{session_options=httpc_options:default_session_options()}}.
 
 
 handle_call({request, Request}, _, State) ->
@@ -75,6 +84,11 @@ handle_call(_, _, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
+handle_info({'DOWN', Ref, _, _, _}, State0 = #state{refs=Refs, session_db=SessionDb}) ->
+    Key = maps:get(Ref, Refs),
+    State = State0#state{refs       = maps:remove(Ref, Refs),
+                         session_db = maps:remove(Key, SessionDb)},
+    {noreply, State};
 handle_info(_, State) ->
     {noreply, State}.
 
@@ -95,13 +109,50 @@ session_name(Session) ->
 http_error(#{id := Id}, Reason) ->
     {Id, {error, Reason}}.
 
-handle_request(Request, State) ->
+
+handle_request(Request = #{uri := #{path := Host, port := Port}}, State0) ->
     RequestId = make_ref(),
-    start_handler(Request#{requestid => RequestId}),
+
+    %% Async request
+    NofSessions = maps:size(State0#state.session_db),
+    MaxSessions = maps:get(max_sessions, State0#state.session_options),
+
+    State =
+        case select_request_handler(Host, Port, State0#state.session_db) of
+            {ok, HandlerPid} ->
+                send_request(HandlerPid, Request#{requestid => RequestId}, State0);
+            %% NofSessions < MaxSessions: always true in sync case
+            no_handler when NofSessions < MaxSessions ->
+                start_handler(Request#{requestid => RequestId}, State0);
+            _ -> %% Only in Async case
+                %% Set connection = close header
+                start_handler(Request#{requestid => RequestId}, State0)
+        end,
     {reply, {ok, RequestId}, State}.
 
 
-start_handler(Request = #{session := Session}) ->
+select_request_handler(Host, Port, HandlerDb) ->
+    case maps:get({Host,Port}, HandlerDb, no_handler) of
+        no_handler ->
+            no_handler;
+        HandlerPid ->
+            {ok, HandlerPid}
+    end.
+
+
+start_handler(Request = #{uri := #{path := Host, port := Port}, session := Session},
+              State = #state{refs=Refs, session_db=SessionDb}) ->
     {ok, Pid} = httpc_handler_sup:start_child([whereis(httpc_handler_sup),
                                                Request, [], session_name(Session)]),
-    erlang:monitor(process, Pid).
+    Ref = erlang:monitor(process, Pid),
+    State#state{refs       = maps:put(Ref, {Host, Port}, Refs),
+                session_db = maps:put({Host, Port}, Pid, SessionDb)}.
+
+
+send_request(HandlerPid, Request, State0) ->
+    case httpc_request_handler:send(HandlerPid, Request) of
+        ok ->
+            State0;
+        {error, closed} ->
+            start_handler(Request, State0)
+    end.

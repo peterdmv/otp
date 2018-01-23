@@ -44,6 +44,7 @@ MODULES= \
 	httpc \
 	httpc_app \
 	httpc_manager \
+	httpc_options \
 	httpc_session_sup \
 	httpc_sup \
 	httpc_request_handler \

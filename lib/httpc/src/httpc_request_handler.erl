@@ -23,27 +23,49 @@
 -behaviour(gen_server).
 
 %% API
--export([start_link/4]).
+-export([start_link/4,
+         send/2]).
 
 %% Gen_server callbacks
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2, terminate/2,
 	 code_change/3]).
 
+-record(state,
+        {
+          request,
+          options
+        }).
 
 %%%=========================================================================
 %%%  API
 %%%=========================================================================
-start_link(_Parent, _Request = #{from := From, requestid := RequestId}, _Options, _ProfileName) ->
-    Opts = [],
-    gen_server:start_link(?MODULE, {From, RequestId}, Opts).
+start_link(Parent, Request, Options, _ProfileName) ->
+    %% Opts = [],
+    %% gen_server:start_link(?MODULE, {Request, Options}, Opts).
+    {ok, proc_lib:start_link(?MODULE, init, [{Parent, Request, Options}])}.
 
+send(Pid, Request) ->
+    gen_server:call(Pid, {request, Request}).
 
 %%%=========================================================================
 %%%  Gen_server callbacks
 %%%=========================================================================
-init({From, RequestId}) ->
+init({Parent, Request, Options}) ->
+
+    %% Do not let initial tcp-connection block the manager-process
+    proc_lib:init_ack(Parent, self()),
+    %%
+    %% TODO Init connection
+    %%
+    %% Send initial fake http answer
+    #{from := From, requestid := RequestId} = Request,
     self() ! {fake_http_answer, From, RequestId},
-    {ok, []}.
+    gen_server:enter_loop(?MODULE, [], #state{request=Request, options=Options}).
+    %% {ok, #state{request=Request, options=Options}}.
+
+handle_call({request, _Request = #{from := From, requestid := RequestId}}, _, State) ->
+    self() ! {fake_http_answer, From, RequestId},
+    {reply, ok, State};
 
 handle_call(_, _, State) ->
     {reply, ok, State}.

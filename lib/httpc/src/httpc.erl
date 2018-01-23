@@ -350,13 +350,14 @@ do_request_with_body(Method,
 
 
 prep_handle_request(Method,
-                    Uri, Headers, ContentType, Body,
+                    Uri0, Headers, ContentType, Body,
                     Opts, Session) ->
-    case uri_string:parse(uri_string:normalize(Uri)) of
+    case uri_string:parse(uri_string:normalize(Uri0)) of
 	{error, Reason, _} ->
 	    {error, Reason};
 	ParsedUri ->
-            handle_request(Method, ParsedUri, Headers, ContentType, Body,
+            Uri = add_default_port(ParsedUri),
+            handle_request(Method, Uri, Headers, ContentType, Body,
                            Opts, Session)
     end.
 
@@ -399,17 +400,15 @@ create_request(Method,
       headers      => Headers,
       content_type => ContentType,
       body         => Body,
-      http_opts    => add_default_http_opts(maps:get(http, Options, [])),
-      session_opts => add_default_session_opts(maps:get(session, Options, [])),
-      socket_opts  => add_default_socket_opts(maps:get(socket, Options, [])),
+      http_opts    => httpc_options:create_http_options(maps:get(http, Options, [])),
       session      => Session
      }.
 
 
 %% Convert legacy options to the new options format
 convert_options(HTTPOptions, RequestOptions) ->
-    HTTPOpts = add_default_http_opts(HTTPOptions ++ RequestOptions),
-    SessionOpts = session_opts_default(),
+    HTTPOpts = httpc_options:create_http_options(HTTPOptions ++ RequestOptions),
+    SessionOpts = httpc_options:default_session_options(),
     SocketOpts = [],
     {HTTPOpts, SessionOpts, SocketOpts}.
 
@@ -437,58 +436,11 @@ check_body(Body) ->
     {error, {bad_body_generator, Body}}.
 
 
-add_default_http_opts(HTTPOpts) ->
-    add_default_options(http_opts_default(), maps:from_list(HTTPOpts)).
-
-
-add_default_session_opts(SessionOpts) ->
-    add_default_options(session_opts_default(), maps:from_list(SessionOpts)).
-
-
-add_default_socket_opts(SocketOpts) ->
-    add_default_options(socket_opts_default(), maps:from_list(SocketOpts)).
-
-
-add_default_options(Default, Options) ->
-    Fun = fun(K,V) ->
-                  case maps:is_key(K, Options) of
-                      true ->
-                          maps:get(K, Options);
-                      false ->
-                          V
-                  end
-          end,
-    maps:map(Fun, Default).
-
-
-http_opts_default() ->
-    #{version         => "HTTP/1.1",
-      timeout         => infinity,
-      autoredirect    => true,
-      ssl             => [],
-      proxy_auth      => undefined,
-      relaxed         => false,
-      connect_timeout => infinity,
-      sync            => true,
-      stream          => none,
-      body_format     => string,
-      full_result     => true,
-      header_as_is    => false,
-      receiver        => self()
-     }.
-
-
-session_opts_default() ->
-    #{proxy                 => undefined,
-      https_proxy           => undefined,
-      max_keep_alive_length => 5,
-      keep_alive_timeout    => 120000,
-      max_sessions          => 2,
-      cookies               => disabled,
-      verbose               => false}.
-
-
-socket_opts_default() ->
-    #{ip => default,
-      port => default,
-      socket_opts => []}.
+add_default_port(Uri = #{scheme := "http"}) ->
+    Port = maps:get(port, Uri, 80),
+    Uri#{port => Port};
+add_default_port(Uri = #{scheme := "https"}) ->
+    Port = maps:get(port, Uri, 443),
+    Uri#{port => Port};
+add_default_port(Uri) ->
+    Uri.
