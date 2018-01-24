@@ -150,7 +150,7 @@ start_handler(Request = #{uri := #{path := Host, port := Port}, session := Sessi
 
 
 send_request(HandlerPid, Request, State0) ->
-    case httpc_request_handler:send(HandlerPid, Request) of
+    case httpc_handler:send(HandlerPid, Request) of
         ok ->
             State0;
         {error, closed} ->

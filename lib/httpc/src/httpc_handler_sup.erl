@@ -47,16 +47,16 @@ init(Config) ->
     SupFlags = #{strategy => simple_one_for_one,
                  intensity => 0,
                  period => 3600},
-    {ok, {SupFlags, [httpc_request_handler_spec(Config)]}}.
+    {ok, {SupFlags, [httpc_handler_spec(Config)]}}.
 
 
 %%====================================================================
 %% Internal functions
 %%====================================================================
-httpc_request_handler_spec(Args) ->
+httpc_handler_spec(Args) ->
     #{id => undefined,
-      start => {httpc_request_handler, start_link, Args},
+      start => {httpc_handler, start_link, Args},
       restart => temporary,
       shutdown => 4000,
       type => worker,
-      modules => [httpc_request_handler]}.
+      modules => [httpc_handler]}.
