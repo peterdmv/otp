@@ -31,6 +31,7 @@
 
 -record(state,
         {
+          request,
           refs = #{},
           session_db = #{},
           session_options = #{},
@@ -141,9 +142,14 @@ select_request_handler(Host, Port, HandlerDb) ->
 
 
 start_handler(Request = #{uri := #{path := Host, port := Port}, session := Session},
-              State = #state{refs=Refs, session_db=SessionDb}) ->
+              State = #state{refs=Refs, session_db=SessionDb,
+                             session_options=SessionOpts,
+                             socket_options=SocketOpts}) ->
     {ok, Pid} = httpc_handler_sup:start_child([whereis(httpc_handler_sup),
-                                               Request, [], session_name(Session)]),
+                                               session_name(Session),
+                                               Request,
+                                               SessionOpts,
+                                               SocketOpts]),
     Ref = erlang:monitor(process, Pid),
     State#state{refs       = maps:put(Ref, {Host, Port}, Refs),
                 session_db = maps:put({Host, Port}, Pid, SessionDb)}.

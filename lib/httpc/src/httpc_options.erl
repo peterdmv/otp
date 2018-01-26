@@ -85,4 +85,7 @@ default_session_options() ->
 default_socket_options() ->
     #{ip => default,
       port => default,
-      socket_opts => []}.
+      socket_opts => [binary,
+                      {packet, http},
+                      {active, true},
+                      {reuseaddr, true}]}.

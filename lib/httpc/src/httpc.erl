@@ -140,10 +140,10 @@
 
 
 %% New options types
--type httpc_options() :: #{http => [httpc_option()],
+-type httpc_options() :: #{http    => [httpc_option()],
                            session => [session_option()],
-                           socket => [socket_option()]}
-                       | #{}.
+                           socket  => [gen_tcp:connect_option()]}
+                           | #{}.
 
 -type httpc_option() :: {version, http_version()}
                       | {timeout, timeout()}
@@ -167,9 +167,12 @@
                         | {cookies, cookie_mode()}
                         | {verbose, verbose_mode()}.
 
--type socket_option() :: {ip, inet:ip_address() | default}
-                        | {port, integer() | default}
-                        | {socket_opts, inet:socket_setopt()}.
+%% -type connect_option() :: {ip, inet:ip_address() | default}
+%%                         | {port, integer() | default}.
+
+%% -type socket_option() :: {ip, inet:ip_address() | default}
+%%                         | {port, integer() | default}
+%%                         | {socket_opts, inet:socket_setopt()}.
 
 -type proxy() :: {hostname(), integer()}.
 

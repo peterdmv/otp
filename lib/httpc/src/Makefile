@@ -48,7 +48,8 @@ MODULES= \
 	httpc_manager \
 	httpc_options \
 	httpc_session_sup \
-	httpc_sup
+	httpc_sup \
+	httpc_transport
 
 
 INTERNAL_HRL_FILES = 
