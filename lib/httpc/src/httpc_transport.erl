@@ -29,14 +29,14 @@
 %%%  API
 %%%=========================================================================
 
-send(Uri,
-     _Request = #{method := Method}, 
-     _Options = #{socket := Socket}) ->
-    Target = uri_string:recompose(Uri),
-    Message = [method(Method), ?SP, Target, ?SP, <<"HTTP/1.1">>, ?CRLF],
+send(_Uri = #{host := Host},
+     _Request = #{method := Method, headers := Headers0, body := Body},
+     Options = #{socket := Socket}) ->
+    Headers = build_headers(Host, Headers0, Options),
+    Message = [method(Method), ?SP, "/", ?SP, <<"HTTP/1.1">>, ?CRLF,
+               Headers, ?CRLF, Body],
     io:format("### Transport SEND: ~p~n", [Message]),
-    Res = gen_tcp:send(Socket, Message),
-    io:format("### Transport SEND RES: ~p~n", [Res]).
+    gen_tcp:send(Socket, Message).
 
 
 %%====================================================================
@@ -45,27 +45,22 @@ send(Uri,
 
 create_socket(#{host := Host, port := Port}, HTTPOpts, SocketOpts0) ->
     Timeout = maps:get(timeout, HTTPOpts),
-    io:format("### Transport Create Socket: ~p~n", [Timeout]),
     SocketOpts = [ binary, {packet, http}, {active, false}, {reuseaddr, true}| SocketOpts0],
+
     {ok, Socket} = %gen_tcp:connect(Host, Port, SocketOpts, Timeout),
     try gen_tcp:connect(Host, Port, SocketOpts, Timeout) of
 	{ok, _} = OK ->
 	    OK;
 	{error, _} = ERROR ->
 	    ERROR
-    catch 
+    catch
 	exit:{badarg, _} ->
-            io:format("### Transport Exception: ~p~n", [badarg]),
 	    {error, {eoptions, HTTPOpts}};
 	exit:badarg ->
-            io:format("### Transport Socket: ~p~n", [badarg]),
 	    {error, {eoptions, HTTPOpts}};
         Type:Exception  ->
             io:format("### Transport Socket: ~p ## ~p ~n", [Type, Exception])
-    end,        
-
-
-
+    end,
     io:format("### Transport Socket: ~p~n", [Socket]),
     Socket.
 
@@ -86,4 +81,6 @@ method(delete) ->
     <<"DELETE">>.
 
 
-
+build_headers(Host,_,_) ->
+    [<<"Host: ">>,Host,?CRLF,
+     <<"Content-Length: 0">>, ?CRLF].

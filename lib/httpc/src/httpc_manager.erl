@@ -34,8 +34,8 @@
           request,
           refs = #{},
           session_db = #{},
-          session_options = #{},
-          socket_options = #{}
+          session_options = [],
+          socket_options = []
         }
        ).
 

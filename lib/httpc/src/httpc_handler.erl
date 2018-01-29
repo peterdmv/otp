@@ -98,10 +98,10 @@ handle_cast(_, State) ->
 handle_info({fake_http_answer, From, RequestId}, State) ->
     From ! {http, {RequestId, {"200 OK", "test", ""}}},
     {noreply, State};
-handle_info({http, _Socket, HttpPacket}, State = #state{request=_Request}) ->
+handle_info({http, Socket, HttpPacket}, State = #state{request=_Request}) ->
     io:format("HTTP: ~p~n", [HttpPacket]),
     %% From = maps:get(from, Request),
-    
+    inet:setopts(Socket, [{active, once}]),
     {noreply, State};
 
 
@@ -119,23 +119,23 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %%====================================================================
 
-send_request(Request = #{uri := Uri, http_opts := HTTPOpts},
+send_request(Request0 = #{uri := Uri, http_opts := HTTPOpts},
              State0 = #state{session_options=_SessionOpts, socket_options=SocketOpts}) ->
 
-    %% Assemble Options for httpc_transport:send
+    %% Create socket
     Socket = httpc_transport:create_socket(Uri, HTTPOpts, SocketOpts),
     Options = #{socket => Socket},
-    case httpc_transport:send(Uri, Request, Options) of
+    case httpc_transport:send(Uri, Request0, Options) of
         ok ->
             %% update state
             Res = inet:setopts(Socket, [{active, once}]),
-            io:format("setopts ~p~n", [Res]),
-            {ok, State0#state{request=Request}};
+            io:format("# setopts {active, once} ~p~n", [Res]),
+            {ok, State0#state{request=Request0}};
         {error, Reason} ->
             io:format("send error ~p~n", [Reason]),
             self() ! {init_error, error_connecting,
-                      httpc_response:error(Request, Reason)},
-            {ok, State0#state{request=Request}}
+                      httpc_response:error(Request0, Reason)},
+            {ok, State0#state{request=Request0}}
     end.
 
 
