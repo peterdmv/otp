@@ -32,12 +32,17 @@
 
 -record(state,
         {
-          request,
+          request,       % Original HTTP request
           options,
           socket,
           socket_type,
           session_options,
-          socket_options
+          socket_options,
+          status_line,   % HTTP respone
+          headers=[],    % HTTP respone
+          body,          % HTTP respone
+          content_length,
+          rstate='start' % request state
         }).
 
 %%%=========================================================================
@@ -85,8 +90,10 @@ init({Parent, Request, SessionOpts, SocketOpts}) ->
     gen_server:enter_loop(?MODULE, [], State).
     %% {ok, #state{request=Request, options=Options}}.
 
-handle_call({request, _Request = #{from := From, requestid := RequestId}}, _, State) ->
-    self() ! {fake_http_answer, From, RequestId},
+handle_call({request, Request}, _, State0) ->
+    %% self() ! {fake_http_answer, From, RequestId},
+    io:format("send request: ~p~n", [Request]),
+    {ok, State} = send_request(Request, State0),
     {reply, ok, State};
 
 handle_call(_, _, State) ->
@@ -95,14 +102,16 @@ handle_call(_, _, State) ->
 handle_cast(_, State) ->
     {noreply, State}.
 
-handle_info({fake_http_answer, From, RequestId}, State) ->
-    From ! {http, {RequestId, {"200 OK", "test", ""}}},
-    {noreply, State};
-handle_info({http, Socket, HttpPacket}, State = #state{request=_Request}) ->
-    io:format("HTTP: ~p~n", [HttpPacket]),
-    %% From = maps:get(from, Request),
-    inet:setopts(Socket, [{active, once}]),
-    {noreply, State};
+%% handle_info({fake_http_answer, From, RequestId}, State) ->
+%%     From ! {http, {RequestId, {"200 OK", "test", ""}}},
+%%     {noreply, State};
+
+handle_info({http, Socket, HttpPacket},
+            State0 = #state{request=_Request}) ->
+    handle_http_msg(Socket, HttpPacket, State0);
+handle_info({tcp, Socket, Data},
+            State0 = #state{request=_Request}) ->
+    handle_http_msg(Socket, Data, State0);
 
 
 handle_info(_, State) ->
@@ -119,6 +128,63 @@ code_change(_OldVsn, State, _Extra) ->
 %% Internal functions
 %%====================================================================
 
+handle_http_msg(Socket, {http_response,{1,1},Code,Reason},
+                State0 = #state{rstate='waiting_response'}) ->
+    io:format("HTTP response: ~p~n", [Code]),
+    inet:setopts(Socket, [{active, once}]),
+    %% TODO get version
+    StatusLine = {"HTTP/1.1", Code, Reason},
+    {noreply, State0#state{status_line=StatusLine, rstate='waiting_headers'}};
+handle_http_msg(Socket, {http_header, _, Name, _, Value},
+                State0 = #state{rstate='waiting_headers'}) ->
+    io:format("HTTP header: ~p ~p~n", [Name, Value]),
+    inet:setopts(Socket, [{active, once}]),
+    Headers = [{Name, Value}|State0#state.headers],
+    %% Handle Content-Length
+    State1 =
+        case Name of
+            'Content-Length' ->
+                State0#state{content_length=list_to_integer(Value)};
+            _ ->
+                State0
+        end,
+    {noreply, State1#state{headers=Headers, rstate='waiting_headers'}};
+handle_http_msg(Socket, http_eoh,
+                State0 = #state{rstate='waiting_headers'}) ->
+    io:format("HTTP End of Headers~n"),
+    inet:setopts(Socket, [{packet, raw},{active, once}]),
+    {noreply, State0#state{rstate='waiting_body'}};
+handle_http_msg(Socket, Data,
+                State0 = #state{rstate='waiting_body',
+                                content_length=Size0}) when Size0 > 0 ->
+    io:format("HTTP body part received (~p bytes): ~p~n", [byte_size(Data), Data]),
+    inet:setopts(Socket, [{active, once}]),
+    Body0 = State0#state.body,
+    Body1 = <<Body0/binary,Data/binary>>,
+    Size1 = Size0 - byte_size(Data),
+    case Size1 of
+        0 ->
+            send_response(State0),
+            {noreply, State0#state{rstate='start',
+                                   status_line=undefined,
+                                   headers=[],
+                                   body=undefined}};
+        _ ->
+            {noreply, State0#state{content_length=Size1,body=Body1}}
+    end.
+
+
+
+send_response(#state{request= #{from := From, requestid := RequestId},
+                    status_line=StatusLine,
+                    headers=Headers,
+                    body=Body}) ->
+    From ! {http, {RequestId, {StatusLine, Headers, Body}}}.
+    
+   
+    
+
+
 send_request(Request0 = #{uri := Uri, http_opts := HTTPOpts},
              State0 = #state{session_options=_SessionOpts, socket_options=SocketOpts}) ->
 
@@ -130,7 +196,7 @@ send_request(Request0 = #{uri := Uri, http_opts := HTTPOpts},
             %% update state
             Res = inet:setopts(Socket, [{active, once}]),
             io:format("# setopts {active, once} ~p~n", [Res]),
-            {ok, State0#state{request=Request0}};
+            {ok, State0#state{request=Request0,rstate='waiting_response'}};
         {error, Reason} ->
             io:format("send error ~p~n", [Reason]),
             self() ! {init_error, error_connecting,
