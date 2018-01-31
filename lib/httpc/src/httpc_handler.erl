@@ -38,9 +38,9 @@
           socket_type,
           session_options,
           socket_options,
-          status_line,   % HTTP respone
-          headers=[],    % HTTP respone
-          body,          % HTTP respone
+          status_line,   % HTTP response
+          headers=[],    % HTTP response
+          body = <<>>,   % HTTP response
           content_length,
           rstate='start' % request state
         }).
@@ -78,7 +78,7 @@ init({Parent, Request, SessionOpts, SocketOpts}) ->
     %% Send initial fake http answer
     %% #{from := From, requestid := RequestId} = Request,
     %% self() ! {fake_http_answer, From, RequestId},
-    
+
 
     %% State = #state{request=Request,
     %%                options=Options,
@@ -157,8 +157,16 @@ handle_http_msg(Socket, http_eoh,
 handle_http_msg(Socket, Data,
                 State0 = #state{rstate='waiting_body',
                                 content_length=Size0}) when Size0 > 0 ->
-    io:format("HTTP body part received (~p bytes): ~p~n", [byte_size(Data), Data]),
     inet:setopts(Socket, [{active, once}]),
+    handle_message_body(Data, State0).
+
+
+%%-------------------------------------------------------------------------
+%% [RFC 7230, Chapter 3.3. Message Body]
+%%-------------------------------------------------------------------------
+handle_message_body(Data, State0 = #state{content_length=Size0,
+                                          status_line={_,200,_}}) when Size0 > 0 ->
+    io:format("HTTP body part received (~p bytes)~n", [byte_size(Data)]),
     Body0 = State0#state.body,
     Body1 = <<Body0/binary,Data/binary>>,
     Size1 = Size0 - byte_size(Data),
@@ -168,7 +176,7 @@ handle_http_msg(Socket, Data,
             {noreply, State0#state{rstate='start',
                                    status_line=undefined,
                                    headers=[],
-                                   body=undefined}};
+                                   body= <<>>}};
         _ ->
             {noreply, State0#state{content_length=Size1,body=Body1}}
     end.
@@ -180,9 +188,6 @@ send_response(#state{request= #{from := From, requestid := RequestId},
                     headers=Headers,
                     body=Body}) ->
     From ! {http, {RequestId, {StatusLine, Headers, Body}}}.
-    
-   
-    
 
 
 send_request(Request0 = #{uri := Uri, http_opts := HTTPOpts},
@@ -203,5 +208,3 @@ send_request(Request0 = #{uri := Uri, http_opts := HTTPOpts},
                       httpc_response:error(Request0, Reason)},
             {ok, State0#state{request=Request0}}
     end.
-
-

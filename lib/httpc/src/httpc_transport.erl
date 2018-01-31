@@ -82,5 +82,6 @@ method(delete) ->
 
 
 build_headers(Host,_,_) ->
-    [<<"Host: ">>,Host,?CRLF,
-     <<"Content-Length: 0">>, ?CRLF].
+    [<<"Host: ">>,Host,?CRLF].
+    %% [<<"Host: ">>,Host,?CRLF,
+    %%  <<"Content-Length: 0">>, ?CRLF].

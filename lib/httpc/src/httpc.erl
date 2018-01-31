@@ -368,10 +368,11 @@ prep_handle_request(Method,
 handle_request(Method,
                Uri, Headers, ContentType, Body,
 	       Opts, Session) ->
-    Request = create_request(Method, Uri, Headers, ContentType, Body, Opts, Session),
+    Request = #{http_opts := HTTPOps} =
+        create_request(Method, Uri, Headers, ContentType, Body, Opts, Session),
     case httpc_manager:request(Request) of
         {ok, RequestId} ->
-            handle_answer(RequestId);
+            handle_answer(RequestId, HTTPOps);
         {error, Reason} ->
             {error, Reason}
     end.
@@ -416,11 +417,12 @@ convert_options(HTTPOptions, RequestOptions) ->
     {HTTPOpts, SessionOpts, SocketOpts}.
 
 
-handle_answer(RequestId) ->
+handle_answer(RequestId, HTTPOpts) ->
     receive
         {http, {RequestId, saved_to_file}} ->
             {ok, saved_to_file};
-	{http, {RequestId, {StatusLine, Headers, Body}}} ->
+	{http, {RequestId, {StatusLine, Headers, BinBody}}} ->
+            Body = maybe_format_body(BinBody, HTTPOpts),
             {ok, {StatusLine, Headers, Body}};
 	{http, {RequestId, {error, Reason}}} ->
 	    {error, Reason}
@@ -428,6 +430,14 @@ handle_answer(RequestId) ->
             timeout
     end.
 
+
+maybe_format_body(BinBody, HTTPOpts) ->
+    case maps:get(body_format, HTTPOpts) of
+        string ->
+            binary_to_list(BinBody);
+        _ ->
+            BinBody
+    end.
 
 check_body({Fun, _}) when is_function(Fun) ->
     ok;
