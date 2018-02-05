@@ -150,6 +150,15 @@ handle_http_msg(Socket, {http_header, _, Name, _, Value},
         end,
     {noreply, State1#state{headers=Headers, rstate='waiting_headers'}};
 handle_http_msg(Socket, http_eoh,
+                State0 = #state{rstate='waiting_headers',status_line={_,405,_}}) ->
+    io:format("HTTP End of Headers~n"),
+    inet:setopts(Socket, [{packet, raw},{active, once}]),
+    send_response(State0),
+    {noreply, State0#state{rstate='start',
+                           status_line=undefined,
+                           headers=[],
+                           body= <<>>}};
+handle_http_msg(Socket, http_eoh,
                 State0 = #state{rstate='waiting_headers'}) ->
     io:format("HTTP End of Headers~n"),
     inet:setopts(Socket, [{packet, raw},{active, once}]),
