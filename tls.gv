@@ -1,0 +1,120 @@
+digraph TLS {
+
+        init [shape=Mdiamond];
+        init -> tls12_hello [label="{start, Timeout}"];
+
+
+	subgraph cluster0 {
+		node [style=filled,color=black,fillcolor=green];
+		color=lightgrey;
+		// hello [style=filled,color=black,fillcolor=green];
+
+		tls12_hello -> tls12_abbreviated;
+		tls12_hello -> tls12_user_hello;
+		tls12_hello -> tls12_certify;
+
+
+
+		tls12_user_hello -> tls12_hello [label="[Recv HC]",constraint=false];
+
+		tls12_abbreviated -> tls12_connection;
+
+
+		tls12_certify -> tls12_cipher;
+		tls12_cipher -> tls12_connection;
+
+		tls12_hello [label="hello",style=filled,color=black,fillcolor=green];
+		tls12_user_hello [label="user_hello"];
+		tls12_abbreviated [label="abbreviated"];
+		tls12_certify [label="certify"];
+		tls12_cipher [label="cipher"];
+		tls12_connection [label="connection"];
+
+		label="TLS 1.2 Client/Server";
+		color=black;
+
+		// {rank=same; tls12_certify; tls12_abbreviated;
+
+		// }
+
+
+	}
+
+	subgraph cluster1 {
+		node [style=filled];
+
+
+		// TLS 1.3
+		tls12_hello -> tls13_client_wait_sh [label="[Send CH]"];
+
+		tls13_client_start -> tls13_client_wait_sh [label="[Send CH]"];
+
+		tls13_client_wait_sh -> tls13_client_wait_ee [label="[Recv SH]"];
+		tls13_client_wait_sh -> tls13_client_start
+		[label="[Recv HelloRetryRequest]",constraint=false];
+
+		tls13_client_wait_ee -> tls13_client_wait_finished [label="[Recv EE]\nUsing PSK"];
+		tls13_client_wait_ee -> tls13_client_wait_cert_cr [label="[Recv EE]\nUsing Cert"];
+		tls13_client_wait_cert_cr -> tls13_client_wait_cv [label="[Recv Cert]"];
+		tls13_client_wait_cert_cr -> tls13_client_wait_cert [label="[Recv CR]"];
+		tls13_client_wait_cert -> tls13_client_wait_cv [label="[Recv Cert]",constraint=false];
+		tls13_client_wait_cv -> tls13_client_wait_finished [label="[Recv CV]"];
+		tls13_client_wait_finished -> tls13_client_connected [label="[Recv Finished]"];
+
+		tls13_client_start [label="start"];
+		tls13_client_wait_sh [label="wait_sh"];
+		tls13_client_wait_ee [label="wait_ee"];
+		tls13_client_wait_finished [label="wait_finished"];
+		tls13_client_wait_cert_cr [label="wait_cert_cr"];
+		tls13_client_wait_cv [label="wait_cv"];
+		tls13_client_wait_cert [label="wait_cert"];
+		tls13_client_connected [label="connected"];
+
+		label="TLS 1.3 Client"
+		color=blue;
+
+	}
+
+	subgraph cluster2 {
+		node [style=filled];
+
+		tls12_hello -> tls13_server_recvd_ch [label="[Recv CH]"];
+
+		tls13_server_start -> tls13_server_recvd_ch [label="[Recv CH]"];
+		tls13_server_recvd_ch -> tls13_server_start
+		[label="[Send HelloRetryrequest]",constraint=false];
+
+		tls13_server_recvd_ch -> tls13_server_negotiated [label="Select params"];
+
+		tls13_server_negotiated -> tls13_server_wait_eoed
+		[label="[Send ServerHello]\n0-RTT"];
+		tls13_server_negotiated -> tls13_server_wait_flight2
+		[label="[Send ServerHello]\nNo 0-RTT"];
+		tls13_server_wait_eoed -> tls13_server_wait_eoed [label="[Recv ED]"];
+		tls13_server_wait_eoed -> tls13_server_wait_flight2 [label="[Recv EOED]"];
+
+		tls13_server_wait_flight2 -> tls13_server_wait_cert [label="Client auth"];
+		tls13_server_wait_flight2 -> tls13_server_wait_finished [label="No auth"];
+
+		tls13_server_wait_cert -> tls13_server_wait_cv [label="[Recv Cert]"];
+		tls13_server_wait_cert -> tls13_server_wait_finished [label="[Recv EC]"];
+		tls13_server_wait_cv -> tls13_server_wait_finished [label="[Recv CV]",constraint=false];
+
+		tls13_server_wait_finished -> tls13_server_connected [label="[Recv Finished]"];
+
+		tls13_server_start [label="start"];
+		tls13_server_recvd_ch [label="recvd_ch"];
+		tls13_server_negotiated [label="negotiated"];
+		tls13_server_wait_eoed [label="wait_eoed"];
+		tls13_server_wait_flight2 [label="wait_flight2"];
+		tls13_server_wait_cert [label="wait_cert"];
+		tls13_server_wait_cv [label="wait_cv"];
+		tls13_server_wait_finished [label="wait_finished"];
+		tls13_server_connected [label="connected"];
+
+		label="TLS 1.3 Server"
+		color=blue;
+
+	}
+
+}
