@@ -290,7 +290,8 @@ client_loop(_Node, Host, Port, Pid, Transport, Options, Opts) ->
 	    send_selected_port(Pid,  proplists:get_value(port, Options), Socket),
 	    {Module, Function, Args} = proplists:get_value(mfa, Opts),
 	    ct:log("~p:~p~nClient: apply(~p,~p,~p)~n",
-			       [?MODULE,?LINE, Module, Function, [Socket | Args]]),
+			       [?MODULE,?LINE, Module, Function,
+                                [Socket | maybe_truncate(Args)]]),
 	    case apply(Module, Function, [Socket | Args]) of
 		no_result_msg ->
 		    ok;
@@ -354,7 +355,7 @@ client_cont_loop(_Node, Host, Port, Pid, Transport, Options, ContOpts, Opts) ->
                     Pid ! {connected, Socket},
                     {Module, Function, Args} = proplists:get_value(mfa, Opts),
                     ct:log("~p:~p~nClient: apply(~p,~p,~p)~n",
-                           [?MODULE,?LINE, Module, Function, [Socket | Args]]),
+                           [?MODULE,?LINE, Module, Function, [Socket | maybe_truncate(Args)]]),
                     case apply(Module, Function, [Socket | Args]) of
                         no_result_msg ->
                             ok;
@@ -2374,3 +2375,10 @@ user_lookup(srp, Username, _UserState) ->
     Salt = ssl_cipher:random_bytes(16),
     UserPassHash = crypto:hash(sha, [Salt, crypto:hash(sha, [Username, <<$:>>, <<"secret">>])]),
     {ok, {srp_1024, Salt, UserPassHash}}.
+
+maybe_truncate([B]) when is_binary(B) andalso
+                       size(B) > 80 ->
+    {H, _} = split_binary(B, 70),
+    [<<H/binary,"-TRUNCATED">>];
+maybe_truncate(V) ->
+    V.
