@@ -420,8 +420,9 @@ client_active_once_server_close(Config) when is_list(Config) ->
 %%--------------------------------------------------------------------
 
 server_echos_passive(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -429,6 +430,7 @@ server_echos_passive(
            {mfa, {?MODULE, echoer, [Length]}},
            {options, [{active, false}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -444,8 +446,9 @@ server_echos_passive(
 
 
 server_echos_active_once(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -453,6 +456,7 @@ server_echos_active_once(
            {mfa, {?MODULE, echoer_active_once, [Length]}},
            {options, [{active, once}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -468,8 +472,9 @@ server_echos_active_once(
 
 
 server_echos_active(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -477,6 +482,7 @@ server_echos_active(
            {mfa, {?MODULE, echoer_active, [Length]}},
            {options, [{active, true}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -491,8 +497,9 @@ server_echos_active(
     ssl_test_lib:close(Client).
 
 client_echos_passive(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -500,6 +507,7 @@ client_echos_passive(
            {mfa, {?MODULE, sender, [Data]}},
            {options, [{active, false}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -514,8 +522,9 @@ client_echos_passive(
     ssl_test_lib:close(Client).
 
 client_echos_active_once(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -523,6 +532,7 @@ client_echos_active_once(
            {mfa, {?MODULE, sender_active_once, [Data]}},
            {options, [{active, once}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -537,8 +547,9 @@ client_echos_active_once(
     ssl_test_lib:close(Client).
 
 client_echos_active(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -546,6 +557,7 @@ client_echos_active(
            {mfa, {?MODULE, sender_active, [Data]}},
            {options, [{active, true}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -560,8 +572,9 @@ client_echos_active(
     ssl_test_lib:close(Client).
 
 client_active_once_server_close(
-  Data, ClientOpts, ServerOpts, ClientNode, ServerNode, Hostname) ->
+  Data, ClientOpts0, ServerOpts0, ClientNode, ServerNode, Hostname) ->
     Length = byte_size(Data),
+    ServerOpts = maybe_increase_buffers(Length, ServerOpts0),
     Server =
         ssl_test_lib:start_server(
           [{node, ServerNode}, {port, 0},
@@ -569,6 +582,7 @@ client_active_once_server_close(
            {mfa, {?MODULE, send_close, [Data]}},
            {options, [{active, once}, {mode, binary} | ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
+    ClientOpts = maybe_increase_buffers(Length, ClientOpts0),
     Client =
         ssl_test_lib:start_client(
           [{node, ClientNode}, {port, Port},
@@ -653,4 +667,15 @@ echo_active(Socket, Size) ->
             ok = ssl:send(Socket, Data),
             echo_active(Socket, Size - byte_size(Data))
     end.    
-        
+
+maybe_increase_buffers(Size, Opts) when Size >= 5000 ->
+    case os:cmd("uname -mrs") of
+        "OpenBSD " ++ _ ->
+            [{rcvbuf, 65535}|Opts];
+        "FreeBSD " ++ _ ->
+            [{rcvbuf, 65535}|Opts];
+        _ ->
+            Opts
+    end;
+maybe_increase_buffers(_, Opts) ->
+    Opts.
