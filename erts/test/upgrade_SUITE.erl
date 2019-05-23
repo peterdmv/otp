@@ -80,7 +80,7 @@ end_per_testcase(_Case,Config) ->
     ok.
 
 all() ->
-    [minor,major].
+    [minor,major,ancient_major].
 
 %% If this is major release X, then this test performs an upgrade from
 %% major release X-1 to the current release.
@@ -88,6 +88,13 @@ major(Config) ->
     Current = erlang:system_info(otp_release),
     PreviousMajor = previous_major(Current),
     upgrade_test(PreviousMajor,Current,Config).
+
+%% If this is major release X, then this test performs an upgrade from
+%% major release X-2 to the current release.
+ancient_major(Config) ->
+    Current = erlang:system_info(otp_release),
+    PreviousPreviousMajor = previous_major(previous_major(Current)),
+    upgrade_test(PreviousPreviousMajor,Current,Config).
 
 %% If this is a patched version of major release X, then this test
 %% performs an upgrade from major release X to the current release.
