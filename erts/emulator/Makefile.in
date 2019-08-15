@@ -626,6 +626,26 @@ $(TTF_DIR)/driver_tab.c: Makefile.in utils/make_driver_tab
 GENERATE += $(TTF_DIR)/driver_tab.c
 
 
+../lib_src/yielding_c_fun/yielding_c_fun.bin: $(shell find $(ERL_TOP)/erts/lib_src/yielding_c_fun -type f)
+	cd $(ERL_TOP)/erts/lib_src/yielding_c_fun/ && make CC=$(CC) CFLAGS="-I. -g"
+
+beam/erl_db_insert_list.inc: ../lib_src/yielding_c_fun/yielding_c_fun.bin beam/erl_db.c
+	$(ERL_TOP)/erts/lib_src/yielding_c_fun/bin/yielding_c_fun.bin \
+		-yield \
+		-static_aux_funs \
+		-only_yielding_funs \
+		-output_file_name beam/erl_db_insert_list.inc \
+		-f ets_insert_2_list_check \
+		-f ets_insert_new_2_list_has_member \
+		-f ets_insert_2_list_from_p_heap \
+		-f ets_insert_2_list_destroy_copied_dbterms \
+		-f ets_insert_2_list_copy_term_list \
+		-f ets_insert_new_2_dbterm_list_has_member \
+		-f ets_insert_2_list_insert_db_term_list \
+		-f ets_insert_2_list \
+		-fnoauto ets_insert_2_list_lock_tbl \
+		beam/erl_db.c
+GENERATE += beam/erl_db_insert_list.inc
 
 # Preloaded code.
 # 

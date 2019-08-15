@@ -5,8 +5,10 @@ CC = cc
 
 ifdef MODERN_CC
 	EXTRA_C_FLAGS = -g -O02 -std=c99 -pedantic -Wall
-else
-	EXTRA_C_FLAGS =
+endif
+
+ifdef CC_32_BIT
+	EXTRA_C_FLAGS = -m32 -g -O03 -std=c99 -pedantic -Wall
 endif
 
 ifdef USE_GC
@@ -52,41 +54,50 @@ $(ODIR)/%.o: %.c $(DEPS)
 .PHONY: clean test run_test_continusly CMakeLists.txt cmake_compile clang_format test_add_san test_mem_san test_modern_cc test_sanitizers test_gcc_clang_tcc clang_tidy test_all
 
 test: bin/yielding_c_fun.bin
-	./test/test.sh $(USE_GC_STRING) &&\
+	./test/test.sh $(USE_GC_STRING) ;\
+	RESULT=$$? &&\
+	(exit $$RESULT) &&\
 	printf "\n\n\033[0;32mALL TESTS PASSED!\033[0m\n\n\n" ||\
-	printf "\n\n\033[0;31mTEST FAILED!\033[0m\n\n\n"
+	printf "\n\n\033[0;31mTEST FAILED!\033[0m\n\n\n" &&\
+	exit $$RESULT
 
 test_add_san:
-	make clean
+	make clean && \
 	make ADD_SAN=1 test
 
 test_mem_san:
-	make clean
+	make clean && \
 	make MEM_SAN=1 test
 
 test_ub_san:
-	make clean
+	make clean && \
 	make UB_SAN=1 test
 
 test_modern_cc:
-	make clean
+	make clean && \
 	make MODERN_CC=1 test
 
 test_sanitizers:
-	make test_add_san
-	make test_mem_san
+	make test_add_san && \
+	make test_mem_san && \
 	make test_ub_san
 
 test_gcc_clang_tcc:
-	make CC=gcc EXTRA_C_FLAGS="-g -O01 -std=c99 -pedantic -Wall -Werror" clean bin/yielding_c_fun.bin
-	make CC=clang EXTRA_C_FLAGS="-g -O01 -std=c99 -pedantic -Wall -Werror" clean bin/yielding_c_fun.bin
+	make CC=gcc EXTRA_C_FLAGS="-g -O01 -std=c99 -pedantic -Wall -Werror" clean bin/yielding_c_fun.bin && \
+	make CC=clang EXTRA_C_FLAGS="-g -O01 -std=c99 -pedantic -Wall -Werror" clean bin/yielding_c_fun.bin && \
 	make CC=tcc EXTRA_C_FLAGS="-g -O01 -std=c99 -pedantic -Wall -Werror" clean bin/yielding_c_fun.bin
 
+test_32_bit:
+	make clean && \
+	make CC_32_BIT=1 test && \
+	make clean
+
 test_all:
-	make test_gcc_clang_tcc
-	make clang_tidy
-	make test_sanitizers
-	make test_modern_cc
+	make test_gcc_clang_tcc && \
+	make clang_tidy	&& \
+	make test_sanitizers && \
+	make test_modern_cc && \
+	make test_32_bit
 
 run_test_continusly:
 	inotifywait -e close_write,moved_to,create -m ./*.c ./*.h -m test -m test/examples | while read -r directory events filename; do gtags ; make test_all ; done

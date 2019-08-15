@@ -90,12 +90,12 @@ static void *scgc_extract_key(void *v, int keyPos) {
 static unsigned int scgc_hash_key(void *keyPtr) {
   /* From
    * https://lemire.me/blog/2018/08/15/fast-strongly-universal-64-bit-hashing-everywhere*/
-  long x = (long)*((void **)keyPtr);
-  long a = 2348923;
-  long b = 3292;
-  long c = 9893487421;
-  int low = (int)x;
-  int high = (int)(x >> 32);
+  int64_t x = (long)*((void **)keyPtr);
+  int64_t a = 2348923;
+  int64_t b = 3292;
+  int64_t c = 9893487421;
+  int32_t low = (int)x;
+  int32_t high = (int)(x >> 32);
   return (unsigned int)((a * low + b * high + c) >> 32);
 }
 
@@ -122,7 +122,7 @@ static void scgc_initialize_global_state() {
 
 static void scgc_do_gc(bool no_stack);
 
-static inline void scgc_destroy_global_state() {
+static void scgc_destroy_global_state() {
   scgc_do_gc(true);
   ch_set_free(scgc_objects);
 }
