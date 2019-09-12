@@ -1739,7 +1739,7 @@ maybe_change_key(K) ->
 
 check_dependencies(K, OptionsMap, Env) ->
     Rules =  maps:get(rules, Env),
-    {_, Deps} = maps:get(K, Rules),
+    Deps = get_dependencies(K, Rules),
     case Deps of
         [] ->
             true;
@@ -1747,6 +1747,14 @@ check_dependencies(K, OptionsMap, Env) ->
             option_already_defined(K,OptionsMap) orelse
                 dependecies_already_defined(L, OptionsMap)
     end.
+
+
+%% Handle options that are not present in the map
+get_dependencies(K, _) when K =:= cb_info orelse K =:= log_alert->
+    [];
+get_dependencies(K, Rules) ->
+    {_, Deps} = maps:get(K, Rules),
+    Deps.
 
 
 option_already_defined(K, Map) ->
@@ -1769,15 +1777,18 @@ expand_options(Opts0, Rules) ->
     SockOpts = lists:foldl(fun(Key, PropList) -> proplists:delete(Key, PropList) end,
                            Opts,
                            AllOpts ++
-                               [ssl_imp,                            %% TODO: remove ssl_imp
-                                client_preferred_next_protocols]),  %% next_protocol_selector
+                               [ssl_imp,                          %% TODO: remove ssl_imp
+                                cb_info,
+                                client_preferred_next_protocols,  %% next_protocol_selector
+                                log_alert]),                      %% obsoleted by log_level
 
     SslOpts = {Opts -- SockOpts, [], length(Opts -- SockOpts)},
     {SslOpts, SockOpts}.
 
 
 add_missing_options({L0, S, _C}, Rules) ->
-    Fun = fun(K, Acc) ->
+    Fun = fun(K0, Acc) ->
+                  K = maybe_change_key(K0),
                   case proplists:is_defined(K, Acc) of
                       true ->
                           Acc;
