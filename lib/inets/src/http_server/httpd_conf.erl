@@ -592,6 +592,12 @@ validate_config_params([{default_type, Value} | Rest]) when is_list(Value) ->
 validate_config_params([{default_type, Value} | _]) ->
     throw({default_type, Value});
 
+validate_config_params([{logger, Value} | Rest]) when is_list(Value) ->
+    true = validate_logger(Value),
+    validate_config_params(Rest);
+validate_config_params([{logger, Value} | _]) ->
+    throw({logger, Value});
+
 validate_config_params([{ssl_certificate_file = Key, Value} | Rest]) ->
     ok = httpd_util:file_validate(Key, Value),
     validate_config_params(Rest);
@@ -1223,6 +1229,10 @@ white_space_clean(String) ->
     re:replace(String, "^[ \t\n\r\f]*|[ \t\n\r\f]*\$","", 
 	       [{return,list}, global]).
 
+validate_logger([{error, Domain}]) when is_atom(Domain) ->
+    true;
+validate_logger(List) ->
+    throw({logger, List}).
 
 %%%=========================================================================
 %%%  Deprecated remove in 19
