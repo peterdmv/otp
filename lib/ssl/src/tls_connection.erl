@@ -543,13 +543,16 @@ init({call, From}, {start, Timeout},
             handshake_env = #handshake_env{renegotiation = {Renegotiation, _}} = HsEnv,
             connection_env = CEnv,
 	    ssl_options = #{log_level := LogLevel,
-                            versions := Versions} = SslOpts,
+                            versions := Versions,
+                            use_ticket := UseTicket,
+                            session_tickets := SessionTickets} = SslOpts,
 	    session = #session{own_certificate = Cert} = Session0,
 	    connection_states = ConnectionStates0
 	   } = State0) ->
     KeyShare = maybe_generate_client_shares(SslOpts),
     Hello = tls_handshake:client_hello(Host, Port, ConnectionStates0, SslOpts,
-				       Cache, CacheCb, Renegotiation, Cert, KeyShare),
+                                       Cache, CacheCb, Renegotiation, Cert, KeyShare,
+                                       SessionTickets, UseTicket),
 
     HelloVersion = tls_record:hello_version(Versions),
     Handshake0 = ssl_handshake:init_handshake_history(),
@@ -763,7 +766,8 @@ connection(internal, #hello_request{},
     try tls_sender:peer_renegotiate(Pid) of
         {ok, Write} ->
             Hello = tls_handshake:client_hello(Host, Port, ConnectionStates, SslOpts,
-                                               Cache, CacheCb, Renegotiation, Cert, undefined),
+                                               Cache, CacheCb, Renegotiation, Cert, undefined,
+                                               false, undefined),
             {State, Actions} = send_handshake(Hello, State0#state{connection_states = ConnectionStates#{current_write => Write}}),
             next_event(hello, no_record, State#state{session = Session0#session{session_id
                                                                       = Hello#client_hello.session_id}}, Actions)
@@ -782,7 +786,8 @@ connection(internal, #hello_request{},
 		  ssl_options = SslOpts, 
 		  connection_states = ConnectionStates} = State0) ->
     Hello = tls_handshake:client_hello(Host, Port, ConnectionStates, SslOpts,
-				       Cache, CacheCb, Renegotiation, Cert, undefined),
+                                       Cache, CacheCb, Renegotiation, Cert, undefined,
+                                       false, undefined),
 
     {State, Actions} = send_handshake(Hello, State0),
     next_event(hello, no_record, State#state{session = Session0#session{session_id
