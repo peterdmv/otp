@@ -1472,8 +1472,10 @@ handle_options(Opts, Role) ->
 %% Handle ssl options at handshake, handshake_continue
 handle_options(Opts0, Role, InheritedSslOpts) when is_map(InheritedSslOpts) ->
     {SslOpts, _} = expand_options(Opts0, ?RULES),
-    process_options(SslOpts, InheritedSslOpts, #{role => Role,
-                                                 rules => ?RULES});
+    Map = process_options(SslOpts, InheritedSslOpts, #{role => Role,
+                                                 rules => ?RULES}),
+    ct:pal("DEBUG (ssl_handle_options 1) RETURN SSL Options = ~p", [Map]),
+    Map;
 %% Handle all options in listen, connect and handshake
 handle_options(Opts0, Role, Host) ->
     {SslOpts0, SockOpts} = expand_options(Opts0, ?RULES),
@@ -1499,7 +1501,7 @@ handle_options(Opts0, Role, Host) ->
     {Sock, Emulated} = emulated_options(Protocol, SockOpts),
     ConnetionCb = connection_cb(Protocol),
     CbInfo = handle_option_cb_info(Opts0, Protocol),
-
+    ct:pal("DEBUG (ssl:handle_options 2) SET ssl = ~p", [SslOpts]),
     {ok, #config{
             ssl = SslOpts,
             emulated = Emulated,
