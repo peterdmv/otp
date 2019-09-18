@@ -21,7 +21,7 @@ WARNINGS="diameter megaco snmp"
 
 TRAVIS_SKIP=""
 if [ "X$TRAVIS" = "Xtrue" ]; then
-   TRAVIS_SKIP="common_test eldap erl_docgen odbc eunit reltool os_mon diameter megaco snmp"
+   TRAVIS_SKIP="common_test eldap erl_docgen odbc eunit reltool os_mon diameter megaco snmp ssl"
 fi
 
 filter "$ALL_APPLICATIONS" "$NO_UNMATCHED $WARNINGS $TRAVIS_SKIP"
