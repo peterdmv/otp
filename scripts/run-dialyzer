@@ -14,7 +14,7 @@ filter () {
 ALL_APPLICATIONS=$(ls -d -1 lib/*/ | sed 's:^lib\|/::g')
 echo "All applications: $ALL_APPLICATIONS" |tr '\n' ' ' && echo ""
 
-BASE_PLT="compiler crypto erts hipe kernel stdlib syntax_tools"
+BASE_PLT="compiler crypto erts hipe kernel stdlib syntax_tools common_test ssh debugger"
 APP_PLT="asn1 edoc et ftp inets mnesia observer public_key sasl runtime_tools snmp ssl tftp wx xmerl tools"
 NO_UNMATCHED="common_test debugger edoc eunit ftp inets mnesia observer reltool ssh ssl syntax_tools tftp wx xmerl"
 WARNINGS="diameter megaco snmp"
