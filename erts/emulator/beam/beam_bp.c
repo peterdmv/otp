@@ -743,7 +743,7 @@ erts_generic_breakpoint(Process* c_p, ErtsCodeInfo *info, Eterm* reg)
 
     if (bp_flags & ERTS_BPF_TIME_TRACE_ACTIVE) {
 	Eterm w;
-	erts_trace_time_call(c_p, info, bp->time);
+	ErtsCodeInfo* prev_info = erts_trace_time_call(c_p, info, bp->time);
 	w = (BeamInstr) *c_p->cp;
 	if (! (BeamIsOpCode(w, op_i_return_time_trace) ||
 	       BeamIsOpCode(w, op_return_trace) ||
@@ -759,7 +759,7 @@ erts_generic_breakpoint(Process* c_p, ErtsCodeInfo *info, Eterm* reg)
 	    ASSERT(c_p->htop <= E && E <= c_p->hend);
 
 	    E -= 2;
-	    E[0] = make_cp(erts_codeinfo_to_code(info));
+	    E[0] = prev_info ? make_cp(erts_codeinfo_to_code(prev_info)) : NIL;
 	    E[1] = make_cp(c_p->cp);     /* original return address */
 	    c_p->cp = beam_return_time_trace;
 	    c_p->stop = E;
@@ -1048,7 +1048,7 @@ do_call_trace(Process* c_p, ErtsCodeInfo* info, Eterm* reg,
     return tracer;
 }
 
-void
+ErtsCodeInfo*
 erts_trace_time_call(Process* c_p, ErtsCodeInfo *info, BpDataTime* bdt)
 {
     ErtsMonotonicTime time;
@@ -1057,6 +1057,7 @@ erts_trace_time_call(Process* c_p, ErtsCodeInfo *info, BpDataTime* bdt)
     bp_time_hash_t *h = NULL;
     BpDataTime *pbdt = NULL;
     Uint32 six = acquire_bp_sched_ix(c_p);
+    ErtsCodeInfo* prev_info;
 
     ASSERT(c_p);
     ASSERT(erts_atomic32_read_acqb(&c_p->state) & (ERTS_PSFLG_RUNNING
@@ -1078,8 +1079,9 @@ erts_trace_time_call(Process* c_p, ErtsCodeInfo *info, BpDataTime* bdt)
 	/* First call of process to instrumented function */
 	pbt = Alloc(sizeof(process_breakpoint_time_t));
 	(void) ERTS_PROC_SET_CALL_TIME(c_p, pbt);
-    } else {
-	ASSERT(pbt->ci);
+        pbt->ci = NULL;
+    }
+    else if (pbt->ci) {
 	/* add time to previous code */
 	sitem.time = time - pbt->time;
 	sitem.pid = c_p->common.id;
@@ -1103,6 +1105,7 @@ erts_trace_time_call(Process* c_p, ErtsCodeInfo *info, BpDataTime* bdt)
 	    }
 	}
     }
+    /*else caller is not call_time traced */
 
     /* Add count to this code */
     sitem.pid     = c_p->common.id;
@@ -1123,14 +1126,16 @@ erts_trace_time_call(Process* c_p, ErtsCodeInfo *info, BpDataTime* bdt)
 	BP_TIME_ADD(item, &sitem);
     }
 
+    prev_info = pbt->ci;
     pbt->ci = info;
     pbt->time = time;
 
     release_bp_sched_ix(six);
+    return prev_info;
 }
 
 void
-erts_trace_time_return(Process *p, ErtsCodeInfo *ci)
+erts_trace_time_return(Process *p, ErtsCodeInfo *prev_info)
 {
     ErtsMonotonicTime time;
     process_breakpoint_time_t *pbt = NULL;
@@ -1188,7 +1193,7 @@ erts_trace_time_return(Process *p, ErtsCodeInfo *ci)
 
 	}
 
-	pbt->ci = ci;
+	pbt->ci = prev_info;
 	pbt->time = time;
 
     }
@@ -1451,24 +1456,26 @@ void erts_schedule_time_break(Process *p, Uint schedule) {
 	     * the previous breakpoint.
 	     */
 
-	    pbdt = get_time_break(pbt->ci);
-	    if (pbdt) {
-		sitem.time = get_mtime(p) - pbt->time;
-		sitem.pid   = p->common.id;
-		sitem.count = 0;
+            if (pbt->ci) {
+                pbdt = get_time_break(pbt->ci);
+                if (pbdt) {
+                    sitem.time = get_mtime(p) - pbt->time;
+                    sitem.pid   = p->common.id;
+                    sitem.count = 0;
 
-		h = &(pbdt->hash[six]);
+                    h = &(pbdt->hash[six]);
 
-		ASSERT(h);
-		ASSERT(h->item);
+                    ASSERT(h);
+                    ASSERT(h->item);
 
-		item = bp_hash_get(h, &sitem);
-		if (!item) {
-		    item = bp_hash_put(h, &sitem);
-		} else {
-		    BP_TIME_ADD(item, &sitem);
-		}
-	    }
+                    item = bp_hash_get(h, &sitem);
+                    if (!item) {
+                        item = bp_hash_put(h, &sitem);
+                    } else {
+                        BP_TIME_ADD(item, &sitem);
+                    }
+                }
+            }
 	    break;
 	case ERTS_BP_CALL_TIME_SCHEDULE_IN :
 	    /* When a process is scheduled _in_,
