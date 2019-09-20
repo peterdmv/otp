@@ -77,12 +77,17 @@ init_per_suite(Config) ->
     catch crypto:stop(),
     try crypto:start() of
 	ok ->
-	    ssl_test_lib:clean_start(),
-	    {ok, _} =
-                make_certs:all(
-                  proplists:get_value(data_dir, Config),
-                  proplists:get_value(priv_dir, Config)),
-	    ssl_test_lib:cert_options(Config)
+            case ssl_test_lib:skip_unstable_os() of
+                {true, OS} ->
+                    {skip, {unstable_os, OS}};
+                false ->
+                    ssl_test_lib:clean_start(),
+                    {ok, _} =
+                        make_certs:all(
+                          proplists:get_value(data_dir, Config),
+                          proplists:get_value(priv_dir, Config)),
+                    ssl_test_lib:cert_options(Config)
+            end
     catch _:_  ->
 	    {skip, "Crypto did not start"}
     end.
@@ -811,3 +816,4 @@ echo_active(Socket, Size) ->
             echo_active(Socket, Size - byte_size(Data))
     end.    
         
+
