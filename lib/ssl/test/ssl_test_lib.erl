@@ -2815,3 +2815,11 @@ skip_unstable_os() ->
         _ ->
             false
     end.
+
+socket_opts() ->
+    case os:type() of 
+        {unix,sunos} ->
+            [{recbuf, 2000000}, {sndbuf, 2000000}];
+        _ ->
+            []
+    end.
