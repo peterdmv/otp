@@ -1986,7 +1986,8 @@ packet(Config, Data, Send, Recv, Quantity, Packet, Active) when Packet == 0;
     Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
 					{from, self()},
 					{mfa, {?MODULE, Send ,[Data, Quantity]}},
-					{options, [{nodelay, true},{packet, Packet} | ServerOpts]}]),
+					{options, [{nodelay, true},{packet, Packet} | 
+                                                   ssl_test_lib:socket_opts() ++ ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
     Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port},
 					{host, Hostname},
@@ -1994,7 +1995,7 @@ packet(Config, Data, Send, Recv, Quantity, Packet, Active) when Packet == 0;
 					{mfa, {?MODULE, Recv, [Data, Quantity]}},
 					{options, [{active, Active}, {nodelay, true},
 						   {packet, Packet} |
-						   ClientOpts]}]),
+						    ssl_test_lib:socket_opts() ++ ClientOpts]}]),
 
     ssl_test_lib:check_result(Client, ok),
 
@@ -2009,7 +2010,7 @@ packet(Config, Data, Send, Recv, Quantity, Packet, Active) ->
     Server = ssl_test_lib:start_server([{node, ClientNode}, {port, 0},
 					{from, self()},
 					{mfa, {?MODULE, Send ,[Data, Quantity]}},
-					{options, [{packet, Packet} | ServerOpts]}]),
+					{options, [{packet, Packet} | ssl_test_lib:socket_opts() ++ ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
     Client = ssl_test_lib:start_client([{node, ServerNode}, {port, Port},
 					{host, Hostname},
@@ -2017,7 +2018,7 @@ packet(Config, Data, Send, Recv, Quantity, Packet, Active) ->
 					{mfa, {?MODULE, Recv, [Data, Quantity]}},
 					{options, [{active, Active},
 						   {packet, Packet} |
-						   ClientOpts]}]),
+                                                   ssl_test_lib:socket_opts() ++ ClientOpts]}]),
 
     ssl_test_lib:check_result(Client, ok),
 
