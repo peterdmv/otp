@@ -31,6 +31,21 @@
   </header>
   <p>This document describes the changes made to the ERTS application.</p>
 
+<section><title>Erts 10.6</title>
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+	    <p><c>file:allocate/3</c> will now work properly on Mac
+	    OS.</p>
+          <p>
+	    Own Id: OTP-16074 Aux Id: ERL-1042, PR-2386 </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Erts 10.5</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>
