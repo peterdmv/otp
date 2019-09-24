@@ -889,7 +889,7 @@ static int db_put_dbterm_hash(DbTable* tbl,
     HashDbTerm** bp;
     HashDbTerm* b;
     HashDbTerm* q;
-    erts_rwmtx_t* lck;
+    DbTableHashLockAndCounter* lck_ctr;
     int nitems;
     int ret = DB_ERROR_NONE;
     HashDbTerm *value_to_insert = ob;
@@ -898,7 +898,7 @@ static int db_put_dbterm_hash(DbTable* tbl,
     key = GETKEY(tb, value_to_insert->dbterm.tpl);
     hval = MAKE_HASH(key);
     value_to_insert->hvalue = hval;
-    lck = WLOCK_HASH(tb, hval);
+    lck_ctr = WLOCK_HASH_GET_LCK_AND_CTR(tb, hval);
     ix = hash_to_ix(tb, hval);
     bp = &BUCKET(tb, ix);
     b = *bp;
@@ -918,7 +918,7 @@ static int db_put_dbterm_hash(DbTable* tbl,
     if (tb->common.status & DB_SET) {
 	HashDbTerm* bnext = b->next;
 	if (is_pseudo_deleted(b)) {
-            INC_NITEMS(tb);
+            INC_NITEMS(tb, lck_ctr, hval);
             b->pseudo_deleted = 0;
 	}
 	else if (key_clash_fail) {
@@ -952,7 +952,7 @@ static int db_put_dbterm_hash(DbTable* tbl,
                             &value_to_insert->dbterm,
                             &q->dbterm)) {
 		if (is_pseudo_deleted(q)) {
-		    INC_NITEMS(tb);
+                    INC_NITEMS(tb, lck_ctr, hval);
                     q->pseudo_deleted = 0;
 		    ASSERT(q->hvalue == hval);
 		    if (q != b) { /* must move to preserve key insertion order */
@@ -975,8 +975,9 @@ Lnew:
     q->pseudo_deleted = 0;
     q->next = b;
     *bp = q;
-    nitems = INC_NITEMS(tb);
-    WUNLOCK_HASH(lck);
+    INC_NITEMS(tb, lck_ctr, hval);
+    nitems = NITEMS_ESTIMATE(tb, lck_ctr, hval);
+    WUNLOCK_HASH_LCK_CTR(lck_ctr);
     {
 	int nactive = NACTIVE(tb);
 	if (nitems > GROW_LIMIT(nactive) && !IS_FIXED(tb)) {
@@ -986,7 +987,7 @@ Lnew:
     return DB_ERROR_NONE;
 
 Ldone:
-    WUNLOCK_HASH(lck);
+    WUNLOCK_HASH_LCK_CTR(lck_ctr);
     return ret;
 }
 
