@@ -747,7 +747,7 @@ handle_session(#server_hello{cipher_suite = CipherSuite,
 	ssl_cipher_format:suite_bin_to_map(CipherSuite),
     
     PremasterSecret = make_premaster_secret(ReqVersion, KeyAlgorithm),
-
+    ct:pal("DEBUG (handle_session 1) negotiated_protocol = ~p", [CurrentProtocol]),
     {ExpectNPN, Protocol} = case Protocol0 of
 				undefined -> 
 
@@ -755,7 +755,7 @@ handle_session(#server_hello{cipher_suite = CipherSuite,
 				_ -> 
 				    {ProtoExt =:= npn, Protocol0}
 			    end,
-
+    ct:pal("DEBUG (handle_session 2) SET expecting_next_protocol_negotiation = ~p negotiated_protocol = ~p", [ExpectNPN, Protocol]),
     State = State0#state{connection_states = ConnectionStates,
 			 handshake_env = HsEnv#handshake_env{kex_algorithm = KeyAlgorithm,
                                                              premaster_secret = PremasterSecret,
@@ -821,7 +821,7 @@ init({call, From}, {start, {Opts, EmOpts}, Timeout},
             ssl_options = OrigSSLOptions,
             socket_options = SockOpts} = State0, Connection) ->
     try 
-        SslOpts = ssl:handle_options(Opts, OrigSSLOptions),
+        SslOpts = ssl:handle_options(Opts, Role, OrigSSLOptions),
 	State = ssl_config(SslOpts, Role, State0),
 	init({call, From}, {start, Timeout}, 
 	     State#state{ssl_options = SslOpts, 
@@ -870,7 +870,7 @@ user_hello({call, From}, {handshake_continue, NewOptions, Timeout},
            #state{static_env = #static_env{role = Role},
                   handshake_env = #handshake_env{hello = Hello},
                   ssl_options = Options0} = State0, _Connection) ->
-    Options = ssl:handle_options(NewOptions, Options0#{handshake => full}),
+    Options = ssl:handle_options(NewOptions, Role, Options0#{handshake => full}),
     State = ssl_config(Options, Role, State0),
     {next_state, hello, State#state{start_or_recv_from = From}, 
      [{next_event, internal, Hello}, {{timeout, handshake}, Timeout, close}]};
@@ -931,6 +931,7 @@ abbreviated(internal, #next_protocol{selected_protocol = SelectedProtocol},
 	    #state{static_env = #static_env{role = server},
                    handshake_env = #handshake_env{expecting_next_protocol_negotiation = true} = HsEnv} = State,
 	    Connection) ->
+    ct:pal("DEBUG (abbreviated) SET negotiated_protocol = ~p", [SelectedProtocol]),
     Connection:next_event(?FUNCTION_NAME, no_record, 
 			  State#state{handshake_env = HsEnv#handshake_env{negotiated_protocol = SelectedProtocol,
                                                                          expecting_next_protocol_negotiation = false}});
@@ -1236,6 +1237,7 @@ cipher(internal, #next_protocol{selected_protocol = SelectedProtocol},
        #state{static_env = #static_env{role = server},
               handshake_env = #handshake_env{expecting_finished = true,
                                              expecting_next_protocol_negotiation = true} = HsEnv} = State, Connection) ->
+    ct:pal("DEBUG (cipher) SET negotiated_protocol = ~p", [SelectedProtocol]),
     Connection:next_event(?FUNCTION_NAME, no_record, 
 			  State#state{handshake_env = HsEnv#handshake_env{negotiated_protocol = SelectedProtocol,
                                                                           expecting_next_protocol_negotiation = false}});
@@ -1277,15 +1279,19 @@ connection({call, From}, {connection_information, false}, State, _) ->
 connection({call, From}, negotiated_protocol, 
 	   #state{handshake_env = #handshake_env{alpn = undefined,
                                                  negotiated_protocol = undefined}} = State, _) ->
+    ct:pal("DEBUG (connection:1280) negotiated_protocol = ~p", [undefined]),
+    debug_state(?FUNCTION_NAME, State),
     hibernate_after(?FUNCTION_NAME, State, [{reply, From, {error, protocol_not_negotiated}}]);
 connection({call, From}, negotiated_protocol, 
 	   #state{handshake_env = #handshake_env{alpn = undefined,
                                                  negotiated_protocol = SelectedProtocol}} = State, _) ->
+    ct:pal("DEBUG (connection:1288) negotiated_protocol = ~p", [SelectedProtocol]),
     hibernate_after(?FUNCTION_NAME, State,
 		    [{reply, From, {ok, SelectedProtocol}}]);
 connection({call, From}, negotiated_protocol,
 	   #state{handshake_env = #handshake_env{alpn = SelectedProtocol,
                                                  negotiated_protocol = undefined}} = State, _) ->
+    ct:pal("DEBUG (connection:1294) negotiated_protocol = ~p", [undefined]),
     hibernate_after(?FUNCTION_NAME, State,
 		    [{reply, From, {ok, SelectedProtocol}}]);
 connection({call, From}, Msg, State, Connection) ->
@@ -3042,7 +3048,7 @@ update_ssl_options_from_sni(#{sni_fun := SNIFun,
         undefined ->
             undefined;
         _ ->
-            ssl:handle_options(SSLOption, OrigSSLOptions)
+            ssl:handle_options(SSLOption, server, OrigSSLOptions)
     end.
 
 new_emulated([], EmOpts) ->
@@ -3054,3 +3060,18 @@ no_records(Extensions) ->
     maps:map(fun(_, Value) ->
                      ssl_handshake:extension_value(Value)
              end, Extensions).  
+
+
+debug_state(FunctionName, #state{ssl_options = SslOptions,
+                                 handshake_env = #handshake_env{
+                                                   client_hello_version = ClientHelloVersion,
+                                                   sni_hostname = SNIHostname,
+                                                   expecting_next_protocol_negotiation = ExpNextProtNeg,
+                                                   next_protocol = NextProtocol,
+                                                   negotiated_protocol = NegotiatedProtocol}}) ->
+    HS = #{client_hello_version => ClientHelloVersion,
+           sni_hostname => SNIHostname,
+           expecting_next_protocol_negotiation => ExpNextProtNeg,
+           next_protocol => NextProtocol,
+           negotiated_protocol => NegotiatedProtocol},
+    ct:pal("DEBUG ========= ~p ===========~n~p~n=======~p" ,[FunctionName, SslOptions,HS]).

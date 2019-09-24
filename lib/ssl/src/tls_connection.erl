@@ -619,7 +619,7 @@ hello(internal, #client_hello{client_version = ClientVersion} = Hello,
              connection_env = CEnv,
              session = #session{own_certificate = Cert} = Session0,
 	     ssl_options = SslOpts} = State) ->
-
+    ct:pal("DEBUG (tls_connection:hello 1) negotiated_protocol = ~p", [CurrentProtocol]),
     case choose_tls_version(SslOpts, Hello) of
         'tls_v1.3' ->
             %% Continue in TLS 1.3 'start' state
@@ -640,6 +640,7 @@ hello(internal, #client_hello{client_version = ClientVersion} = Hello,
                                    undefined -> CurrentProtocol;
                                    _ -> Protocol0
                                end,
+                    ct:pal("DEBUG (tls_connection:hello 2) SET negotiated_protocol = ~p", [Protocol]),
                     gen_handshake(?FUNCTION_NAME,
                                   internal,
                                   {common_client_hello, Type, ServerHelloExt},
