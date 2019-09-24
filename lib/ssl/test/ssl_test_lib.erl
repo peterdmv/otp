@@ -2800,3 +2800,26 @@ openssl_sane_dtls_alpn() ->
         _->
             openssl_sane_dtls()
     end.
+
+skip_unstable_os() ->
+    OS = os:cmd("uname -a"),
+    Tokens = string:tokens(OS, " "),
+    case length(Tokens) of
+        N when N >= 4 ->  
+            case lists:nth(4, Tokens) of
+                "oi_151a9" ->
+                    {true, OS};
+                 _ ->
+                    false
+            end;
+        _ ->
+            false
+    end.
+
+socket_opts() ->
+    case os:type() of 
+        {unix,sunos} ->
+            [{recbuf, 2000000}, {sndbuf, 2000000}];
+        _ ->
+            []
+    end.
