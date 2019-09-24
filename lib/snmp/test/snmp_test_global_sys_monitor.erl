@@ -41,7 +41,7 @@ stop() ->
 %% This does not reset the global counter but the "collector"
 %% See events for more info.
 reset_events() ->
-    cast(reset_events).
+    call(reset_events).
 
 events() ->
     call(events).
@@ -75,7 +75,14 @@ loop(State) ->
                         [maps:get(ev_cnt, State)]),
             exit(normal);
 
-        {?MODULE, reset_events} ->
+        {?MODULE, Ref, From, reset_events} ->
+            TotEvCnt = maps:get(ev_cnt, State),
+            EvCnt    = length(maps:get(evs, State)),
+            info_msg("Reset events when"
+                     "~n   Total Number of Events:   ~p"
+                     "~n   Current Number of Events: ~p",
+                     [TotEvCnt, EvCnt]),
+            From ! {?MODULE, Ref, {ok, {TotEvCnt, EvCnt}}},
             loop(State#{evs => []});
 
         {?MODULE, Ref, From, events} ->
@@ -131,23 +138,24 @@ process_event(State, Node, Event) ->
 %% We only *count* system events
 process_system_event(#{ev_cnt := Cnt, evs := Evs} = State,
                      Node, Pid, TS, long_gc = Ev, Info) ->
-    print_system_event("Long GC", Node, Pid, TS, Info),
+    print_system_event(f("Long GC (~w)", [length(Evs)]), Node, Pid, TS, Info),
     State#{ev_cnt => Cnt + 1, evs => [{Node, Ev} | Evs]};
 process_system_event(#{ev_cnt := Cnt, evs := Evs} = State,
                      Node, Pid, TS, long_schedule = Ev, Info) ->
-    print_system_event("Long Schedule", Node, Pid, TS, Info),
+    print_system_event(f("Long Schedule (~w)", [length(Evs)]), Node, Pid, TS, Info),
     State#{ev_cnt => Cnt + 1, evs => [{Node, Ev} | Evs]};
 process_system_event(#{ev_cnt := Cnt, evs := Evs} = State,
                      Node, Pid, TS, large_heap = Ev, Info) ->
-    print_system_event("Large Heap", Node, Pid, TS, Info),
+    print_system_event(f("Large Heap (~w)", [length(Evs)]), Node, Pid, TS, Info),
     State#{ev_cnt => Cnt + 1, evs => [{Node, Ev} | Evs]};
 process_system_event(#{ev_cnt := Cnt, evs := Evs} = State,
                      Node, Pid, TS, busy_port = Ev, Info) ->
-    print_system_event("Busy port", Node, Pid, TS, Info),
+    print_system_event(f("Busy port (~w)", [length(Evs)]), Node, Pid, TS, Info),
     State#{ev_cnt => Cnt + 1, evs => [{Node, Ev} | Evs]};
 process_system_event(#{ev_cnt := Cnt, evs := Evs} = State,
                      Node, Pid, TS, busy_dist_port = Ev, Info) ->
-    print_system_event("Busy dist port", Node, Pid, TS, Info),
+    print_system_event(f("Busy dist port (~w)", [length(Evs)]),
+                       Node, Pid, TS, Info),
     State#{ev_cnt => Cnt + 1, evs => [{Node, Ev} | Evs]};
 
 %% And everything else
