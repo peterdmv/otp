@@ -34,7 +34,8 @@
 %% Exported end user tests
 
 -export([seq/3, seq_r/3]).
--export([loaded/1, a_function/1, a_called_function/1, dec/1, nif_dec/1, dead_tracer/1]).
+-export([loaded/1, a_function/1, a_called_function/1, dec/1, nif_dec/1, dead_tracer/1,
+        return_stop/1]).
 
 -define(US_ERROR, 10000).
 -define(R_ERROR, 0.8).
@@ -88,7 +89,7 @@ all() ->
 	true -> [not_run];
 	false ->
 	    [basic, on_and_off, info, pause_and_restart, scheduling,
-	     combo, bif, nif, called_function, dead_tracer]
+	     combo, bif, nif, called_function, dead_tracer, return_stop]
     end.
 
 not_run(Config) when is_list(Config) ->
@@ -387,8 +388,8 @@ nif(Config) when is_list(Config) ->
 
     % the nif is called M - 1 times, the last time the function with 'with_nif'
     % returns ok and does not call the nif.
-    ok = check_trace_info({?MODULE, nif_dec,  1}, [{Pid, M-1, 0, 0}], T1/5*4),
-    ok = check_trace_info({?MODULE, with_nif, 1}, [{Pid, M, 0, 0}], T1/5),
+    ok = check_trace_info({?MODULE, nif_dec,  1}, [{Pid, M-1, 0, 0}], T1/2),
+    ok = check_trace_info({?MODULE, with_nif, 1}, [{Pid, M, 0, 0}], T1/2),
 
     %%
     P = erlang:trace_pattern({'_','_','_'}, false, [call_time]),
@@ -523,9 +524,58 @@ collect_all_info([MFA|T]) ->
     end;
 collect_all_info([]) -> [].
 
-%%% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
-%%% The Tests
-%%%
+
+%% OTP-16111: Verify call_time does not increase after traced function returns.
+return_stop(_Config) ->
+    P = erlang:trace_pattern({'_','_','_'}, false, [call_time]),
+    %%
+    1 = erlang:trace_pattern({?MODULE,aaa,  '_'}, true, [call_time]),
+    1 = erlang:trace_pattern({?MODULE,bbb,  '_'}, true, [call_time]),
+    Pid = setup(),
+    {aaa, T1} = execute(Pid, fun() -> aaa()  end),
+    {call_time, [{Pid, 1, 0, US1}]} = erlang:trace_info({?MODULE,aaa,0}, call_time),
+    io:format("T1=~p us, US1=~p us\n", [T1, US1]),
+    true = (US1 =< T1),
+
+    {call_time, [{Pid, 1, 0, US1}]} = erlang:trace_info({?MODULE,aaa,0}, call_time),
+
+    execute(Pid, fun() -> loaded(1000000)  end),
+    {call_time, [{Pid, 1, 0, US1}]} = erlang:trace_info({?MODULE,aaa,0}, call_time),
+
+    {bbb,  _} = execute(Pid, fun() -> bbb()  end),
+    {call_time, [{Pid, 1, 0, US1}]} = erlang:trace_info({?MODULE,aaa,0}, call_time),
+
+    1 = erlang:trace_pattern({?MODULE,spinner,  1}, true, [call_time]),
+    1 = erlang:trace_pattern({?MODULE,quicky,  0}, true, [call_time]),
+    {spinner,  T2} = execute(Pid, fun() -> spinner(1000000)  end),
+    {call_time, [{Pid, 1, SpS, SpUS}]} = erlang:trace_info({?MODULE,spinner,1}, call_time),
+    Spinner = SpS*1000000 + SpUS,
+    {call_time, [{Pid, 1, 0, Quicky}]} = erlang:trace_info({?MODULE,quicky,0}, call_time),
+    io:format("T2=~p us, Spinner=~p us, Quicky=~p us\n", [T2, Spinner, Quicky]),
+
+    %% Before fix: quicky() got attributed the call_time of its caller spinner().
+    true = (Quicky =< Spinner),
+    true = (Spinner =< T2),
+
+    %%
+    P = erlang:trace_pattern({'_','_','_'}, false, [call_time]),
+    Pid ! quit,
+    ok.
+
+
+aaa() ->
+    aaa.
+bbb() ->
+   bbb.
+
+spinner(N) ->
+    quicky(),
+    loaded(N),
+    spinner.
+
+quicky() ->
+    done.
+
 
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %% %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
