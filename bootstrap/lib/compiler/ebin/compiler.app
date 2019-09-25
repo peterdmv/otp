@@ -19,7 +19,7 @@
 
 {application, compiler,
  [{description, "ERTS  CXC 138 10"},
-  {vsn, "7.4.4"},
+  {vsn, "7.4.5"},
   {modules, [
 	     beam_a,
 	     beam_asm,
@@ -35,6 +35,7 @@
 	     beam_opcodes,
 	     beam_peep,
              beam_ssa,
+             beam_ssa_bool,
              beam_ssa_bsm,
              beam_ssa_codegen,
              beam_ssa_dead,
