@@ -33,6 +33,24 @@
     <file>notes.xml</file>
     </header>
 
+<section><title>Common_Test 1.19</title>
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+	    The function <c>ct_property_test:init_tool/1</c> is added
+	    for the cases when the user does not want
+	    ct_property_test to compile properties. init_tool/1 can
+	    be used to set the property_test_tool config value.</p>
+          <p>
+	    Own Id: OTP-16029 Aux Id: PR-2145 </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Common_Test 1.18</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>

@@ -31,6 +31,48 @@
   </header>
   <p>This document describes the changes made to the Kernel application.</p>
 
+<section><title>Kernel 6.6</title>
+
+    <section><title>Fixed Bugs and Malfunctions</title>
+      <list>
+        <item>
+          <p>
+	    Fix race condition during shutdown when
+	    <c>shell_history</c> is enabled. The race condition would
+	    trigger crashes in <c>disk_log</c>.</p>
+          <p>
+	    Own Id: OTP-16008 Aux Id: PR-2302 </p>
+        </item>
+      </list>
+    </section>
+
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+	    Remove usage and documentation of old requests of the
+	    I/O-protocol.</p>
+          <p>
+	    Own Id: OTP-15695</p>
+        </item>
+        <item>
+	    <p>Directories can now be opened by <c>file:open/2</c>
+	    when passing the <c>directory</c> option.</p>
+          <p>
+	    Own Id: OTP-15835 Aux Id: PR-2212 </p>
+        </item>
+        <item>
+	    <p><c>file:read_file_info/2</c> can now be used on opened
+	    files and directories.</p>
+          <p>
+	    Own Id: OTP-15956 Aux Id: PR-2231 </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Kernel 6.5</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>

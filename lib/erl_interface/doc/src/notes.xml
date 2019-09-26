@@ -31,6 +31,22 @@
   </header>
   <p>This document describes the changes made to the Erl_interface application.</p>
 
+<section><title>Erl_Interface 3.14</title>
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+	    Fix various build issues when compiling Erlang/OTP to the
+	    IBM AIX platform.</p>
+          <p>
+	    Own Id: OTP-15866 Aux Id: PR-2110 </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Erl_Interface 3.13</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>

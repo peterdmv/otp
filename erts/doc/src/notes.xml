@@ -31,6 +31,88 @@
   </header>
   <p>This document describes the changes made to the ERTS application.</p>
 
+<section><title>Erts 10.6</title>
+
+    <section><title>Fixed Bugs and Malfunctions</title>
+      <list>
+        <item>
+	    <p>BIFs now behave like ordinary functions with regard to
+	    tracing, allowing <c>call_count</c> tracing and fixing a
+	    few bugs where return trace messages were lost when BIFs
+	    tail-called themselves or other functions
+	    ("trapping").</p>
+          <p>
+	    Own Id: OTP-14734</p>
+        </item>
+      </list>
+    </section>
+
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+	    <p>Internally in BEAM, handling of continuation pointers
+	    has been simplified. This change is not user-visible,
+	    except when examing a process stack in the crashdump
+	    viewer. The continuation pointer for a function will now
+	    be stored below the y(0) for that function.</p>
+          <p>
+	    Own Id: OTP-15077</p>
+        </item>
+        <item>
+	    <p><c>seq_trace</c> tokens are now propagated to spawned
+	    processes.</p>
+          <p>
+	    Own Id: OTP-15232 Aux Id: ERL-700 </p>
+        </item>
+        <item>
+	    <p>Directories can now be opened by <c>file:open/2</c>
+	    when passing the <c>directory</c> option.</p>
+          <p>
+	    Own Id: OTP-15835 Aux Id: PR-2212 </p>
+        </item>
+        <item>
+          <p>
+	    Add Hygon Dhyana as known processor to enable support for
+	    atomic operations.</p>
+          <p>
+	    Own Id: OTP-15840</p>
+        </item>
+        <item>
+          <p>
+	    Fix various build issues when compiling Erlang/OTP to the
+	    IBM AIX platform.</p>
+          <p>
+	    Own Id: OTP-15866 Aux Id: PR-2110 </p>
+        </item>
+        <item>
+	    <p><c>file:read_file_info/2</c> can now be used on opened
+	    files and directories.</p>
+          <p>
+	    Own Id: OTP-15956 Aux Id: PR-2231 </p>
+        </item>
+        <item>
+          <p>
+	    Add arity-1 versions of <c>atom_to_binary</c>,
+	    <c>binary_to_atom</c> and <c>binary_to_existing_atom</c>,
+	    all with <c>utf8</c> as default encoding.</p>
+          <p>
+	    Own Id: OTP-15995 Aux Id: PR-2358 </p>
+        </item>
+        <item>
+          <p>
+	    Optimized the erts internal hash table implementation for
+	    faster lookups. The internal hash is used for things
+	    like; the process registry, executing erlang:apply/2,
+	    executing M:func(test), and more.</p>
+          <p>
+	    Own Id: OTP-16014 Aux Id: PR-2345 </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Erts 10.5</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>

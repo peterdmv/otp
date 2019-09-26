@@ -30,6 +30,46 @@
     <file>notes.xml</file>
   </header>
 
+<section><title>Ssh 4.9</title>
+
+    <section><title>Improvements and New Features</title>
+      <list>
+        <item>
+          <p>
+	    TCP/IP port forwarding, a.k.a tunneling a.k.a as
+	    tcp-forward/direct-tcp is implemented. In the OpenSSH
+	    client, this corresponds to the options -L and -R.</p>
+          <p>
+	    The client or server listens to a specified socket, and
+	    when something connects to it with TCP/IP, that
+	    connection is forwarded in an encrypted tunnel to the
+	    peer. The peer then connects to a predefined IP/port pair
+	    and then acts as a proxy.</p>
+          <p>
+	    See the manual, <c>ssh:tcpip_tunnel_to_server/6</c> and
+	    <c>ssh:tcpip_tunnel_from_server/6</c>.</p>
+          <p>
+	    The functionality is disabled per default and must be
+	    enabled if wanted when starting a daemon.</p>
+          <p>
+	    Own Id: OTP-15998 Aux Id: PR-2376, PR-2368 </p>
+        </item>
+        <item>
+          <p>
+	    The client side of the supervisor tree (under sshc_sup)
+	    was previously not complete - the channel handling
+	    processes were handled with links but no supervisors.</p>
+          <p>
+	    This is now corrected with a supervisor tree similar to
+	    the server-side of the tree under sshd_sup.</p>
+          <p>
+	    Own Id: OTP-16026 Aux Id: PR-2368, (OTP-15998) </p>
+        </item>
+      </list>
+    </section>
+
+</section>
+
 <section><title>Ssh 4.8</title>
 
     <section><title>Fixed Bugs and Malfunctions</title>
