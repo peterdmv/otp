@@ -23,6 +23,7 @@
 
 -export([all/0,suite/0,init_per_suite/1,end_per_suite/1,
 	 basic/1,purging/1,sharing/1,get_trapping/1,
+         destruction/1,
          info/1,info_trapping/1,killed_while_trapping/1,
          off_heap_values/1,keys/1,collisions/1,
          init_restart/1, put_erase_trapping/1,
@@ -38,6 +39,7 @@ suite() ->
 
 all() ->
     [basic,purging,sharing,get_trapping,info,info_trapping,
+     destruction,
      killed_while_trapping,off_heap_values,keys,collisions,
      init_restart, put_erase_trapping, killed_while_trapping_put,
      killed_while_trapping_erase].
@@ -173,6 +175,61 @@ purging_tester_1(Term) ->
 
 purging_check_term({term,[<<"abc",0:777/unit:8>>]}) ->
     ok.
+
+%% Make sure terms are really deallocated when overwritten or erased.
+destruction(Config) ->
+    ok = erts_test_destructor:init(Config),
+
+    NKeys = 100,
+    Keys = lists:seq(0,NKeys-1),
+    [begin
+         V = erts_test_destructor:send(self(), K),
+         persistent_term:put({?MODULE,K}, V)
+     end
+     || K <- Keys],
+
+    %% Erase or overwrite all keys in "random" order.
+    lists:foldl(fun(_, K) ->
+                        case erlang:phash2(K) band 1 of
+                            0 ->
+                                persistent_term:erase({?MODULE,K});
+                            1 ->
+                                persistent_term:put({?MODULE,K}, value)
+                        end,
+                        (K + 13) rem NKeys
+                end,
+                17, Keys),
+
+    destruction_1(Keys).
+
+destruction_1(Keys) ->
+    erlang:garbage_collect(),
+
+    %% Receive all destruction messages
+    MsgLst = while(fun(0, Acc) ->
+                           {false, Acc};
+                      (N, Acc) ->
+                           receive M ->
+                                   {true, [N-1, [M | Acc]]}
+                           after 1000 ->
+                                   io:format("TIMEOUT\n"),
+                                   {false, Acc}
+                           end
+                   end,
+                   [length(Keys), []]),
+    ok = case lists:sort(MsgLst) of
+             Keys ->
+                 ok;
+             _ ->
+                 io:format("GOT ~p\n", [MsgLst]),
+                 io:format("MISSING ~p\n", [Keys -- MsgLst]),
+                 error
+         end,
+
+    %% Cleanup all remaining
+    [persistent_term:erase({?MODULE,K}) || K <- Keys],
+    ok.
+
 
 %% Test that sharing is preserved when storing terms.
 
@@ -690,6 +747,15 @@ do_erases(NrOfErases) ->
     persistent_term:erase(Key),
     not_found = persistent_term:get(Key, not_found),
     do_erases(NrOfErases - 1).
+
+
+while(Fun, Args0) ->
+    case apply(Fun, Args0) of
+        {true, Args1} ->
+            while(Fun, Args1);
+        {false, Result} ->
+            Result
+    end.
 
 repeat(_Fun, 0) ->
     ok;
