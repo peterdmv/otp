@@ -77,12 +77,17 @@ init_per_suite(Config) ->
     catch crypto:stop(),
     try crypto:start() of
 	ok ->
-	    ssl_test_lib:clean_start(),
-	    {ok, _} =
-                make_certs:all(
-                  proplists:get_value(data_dir, Config),
-                  proplists:get_value(priv_dir, Config)),
-	    ssl_test_lib:cert_options(Config)
+            case ssl_test_lib:skip_unstable_os() of
+                {true, OS} ->
+                    {skip, {unstable_os, OS}};
+                false ->
+                    ssl_test_lib:clean_start(),
+                    {ok, _} =
+                        make_certs:all(
+                          proplists:get_value(data_dir, Config),
+                          proplists:get_value(priv_dir, Config)),
+                    ssl_test_lib:cert_options(Config)
+            end
     catch _:_  ->
 	    {skip, "Crypto did not start"}
     end.
@@ -664,7 +669,7 @@ client_echos_active_once(
           [{node, ServerNode}, {port, 0},
            {from, self()},
            {mfa, {?MODULE, sender_active_once, [Data]}},
-           {options, [{active, once}, {mode, binary} | ServerOpts]}]),
+           {options, [{active, once}, {mode, binary} | ssl_test_lib:socket_opts()  ++ ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
     Client =
         ssl_test_lib:start_client(
@@ -672,7 +677,7 @@ client_echos_active_once(
            {host, Hostname},
            {from, self()},
            {mfa, {?MODULE, echoer_active_once, [Length]}},
-           {options,[{active, once}, {mode, binary} | ClientOpts]}]),
+           {options,[{active, once}, {mode, binary} | ssl_test_lib:socket_opts() ++ ClientOpts]}]),
     %%
     ssl_test_lib:check_result(Server, ok, Client, ok),
     %%
@@ -687,7 +692,7 @@ client_echos_active(
           [{node, ServerNode}, {port, 0},
            {from, self()},
            {mfa, {?MODULE, sender_active, [Data]}},
-           {options, [{active, true}, {mode, binary} | ServerOpts]}]),
+           {options, [{active, true}, {mode, binary} | ssl_test_lib:socket_opts() ++ ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
     Client =
         ssl_test_lib:start_client(
@@ -695,7 +700,7 @@ client_echos_active(
            {host, Hostname},
            {from, self()},
            {mfa, {?MODULE, echoer_active, [Length]}},
-           {options, [{active, true}, {mode, binary} | ClientOpts]}]),
+           {options, [{active, true}, {mode, binary} | ssl_test_lib:socket_opts() ++ ClientOpts]}]),
     %
     ssl_test_lib:check_result(Server, ok, Client, ok),
     %%
@@ -710,7 +715,7 @@ client_active_once_server_close(
           [{node, ServerNode}, {port, 0},
            {from, self()},
            {mfa, {?MODULE, send_close, [Data]}},
-           {options, [{active, once}, {mode, binary} | ServerOpts]}]),
+           {options, [{active, once}, {mode, binary} | ssl_test_lib:socket_opts() ++ ServerOpts]}]),
     Port = ssl_test_lib:inet_port(Server),
     Client =
         ssl_test_lib:start_client(
@@ -718,7 +723,7 @@ client_active_once_server_close(
            {host, Hostname},
            {from, self()},
            {mfa, {ssl_test_lib, active_once_recv, [Length]}},
-           {options,[{active, once}, {mode, binary} | ClientOpts]}]),
+           {options,[{active, once}, {mode, binary} | ssl_test_lib:socket_opts() ++ ClientOpts]}]),
     %%
     ssl_test_lib:check_result(Server, ok, Client, ok).
 
