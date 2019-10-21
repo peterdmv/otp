@@ -515,7 +515,7 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
 	{ok, Data, Bin} -> % Send data
             BufferSize = BufferSize0 - (byte_size(Bin0) - byte_size(Bin)),
             read_application_data_deliver(
-              State, [Bin|Front0], BufferSize, Rear0, SocketOpts0, RecvFrom, Data);
+              State, Front0, BufferSize, Rear0, SocketOpts0, RecvFrom, Data, Bin);
         {more, undefined} ->
             %% We need more data, do not know how much
             if
@@ -533,8 +533,9 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
             end;
         {more, Size} when Size =< BufferSize0 ->
             %% We have a packet in the buffer - collect it in a binary and decode
-            {Data,Front,Rear} = iovec_from_front(Size - byte_size(Bin0), Front0, Rear0, [Bin0]),
-            Bin = iolist_to_binary(Data),
+            Sofar = byte_size(Bin0),
+            {Data,Front,Rear} = iovec_from_front(Size - Sofar, Front0, Rear0),
+            Bin = iolist_to_binary([Bin0|Data]),
             read_application_data_bin(
               State, Front, BufferSize0, Rear, SocketOpts0, RecvFrom, BytesToRead, Bin);
         {more, _Size} ->
@@ -542,7 +543,7 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
             {no_record, State#state{socket_options = SocketOpts0,
                                     bytes_to_read = BytesToRead,
                                     start_or_recv_from = RecvFrom,
-                                    user_data_buffer = {[Bin0|Front0],BufferSize0,Rear0}}};
+                                    user_data_buffer = {[Bin0|Front0],BufferSize0, Rear0}}};
         passive ->
             {no_record, State#state{socket_options = SocketOpts0,
                                     bytes_to_read = BytesToRead,
@@ -569,7 +570,7 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
                                                    user_data_buffer = {[Buffer],BufferSize0,[]}}}
     end.
 
-read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvFrom, Data) ->
+read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvFrom, Data, Bin0) ->
     #state{
        static_env =
            #static_env{
@@ -587,13 +588,13 @@ read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvF
             %% Passive mode, wait for active once or recv
             {no_record,
              State#state{
-               user_data_buffer = {Front,BufferSize,Rear},
+               user_data_buffer = {[Bin0 |Front],BufferSize,Rear},
                start_or_recv_from = undefined,
                 bytes_to_read = undefined,
                socket_options = SocketOpts
               }};
         true -> %% Try to deliver more data
-            read_application_data(State, Front, BufferSize, Rear, SocketOpts, undefined, undefined)
+            read_application_data_bin(State, Front, BufferSize, Rear, SocketOpts,RecvFrom, undefined, Bin0)
     end.
 
 
@@ -651,8 +652,8 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
         <<Size:32, FirstData/binary>> when 4+Size =< BufferSize ->
             %% We have a complete packet in the buffer
             %% - fetch the missing content from the buffer front
-            {Data,Front,Rear} = iovec_from_front(Size - byte_size(FirstData), Front0, Rear0, [FirstData]),
-            0 < Size andalso erlang:dist_ctrl_put_data(DHandle, Data),
+            {Data,Front,Rear} = iovec_from_front(Size - byte_size(FirstData), Front0, Rear0),
+            0 < Size andalso erlang:dist_ctrl_put_data(DHandle, [FirstData | Data]),
             read_application_dist_data(DHandle, Front, BufferSize - (4+Size), Rear);
         <<Bin/binary>> ->
             %% In OTP-21 the match context reuse optimization fails if we use Bin0 in recursion, so here we
@@ -667,15 +668,15 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
                     %% We do not have a length field in the first binary but the buffer
                     %% contains enough data to maybe form a packet
                     %% - fetch a tiny binary from the buffer front to complete the length field
-                    {LengthField,Front,Rear} =
+                    {FirstLengthField,Front,Rear} =
                         case IncompleteLengthField of
                             <<>> ->
-                                iovec_from_front(4, Front0, Rear0, []);
+                                iovec_from_front(4, Front0, Rear0);
                             _ ->
                                 iovec_from_front(
-                                  4 - byte_size(IncompleteLengthField), Front0, Rear0, [IncompleteLengthField])
+                                  4 - byte_size(IncompleteLengthField), Front0, Rear0)
                         end,
-                    LengthBin = iolist_to_binary(LengthField),
+                    LengthBin = iolist_to_binary(FirstLengthField),
                     read_application_dist_data(DHandle, Front, BufferSize, Rear, LengthBin);
                 <<IncompleteLengthField/binary>> ->
                     %% We do not have enough data in the buffer to even form a length field - await more data
@@ -688,6 +689,10 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
             end
     end.
 
+
+iovec_from_front(Size, Front, Rear) ->
+    iovec_from_front(Size, Front, Rear, []).
+%%
 iovec_from_front(0, Front, Rear, Acc) ->
     {lists:reverse(Acc),Front,Rear};
 iovec_from_front(Size, [], Rear, Acc) ->
