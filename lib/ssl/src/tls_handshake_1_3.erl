@@ -1175,14 +1175,17 @@ maybe_send_session_ticket(#state{ssl_options = #{session_tickets := stateful},
     {State, _} = tls_connection:send_handshake(Ticket, State0),
     maybe_send_session_ticket(State, N - 1);
 maybe_send_session_ticket(#state{
-                             ssl_options = #{session_tickets := stateless},
+                             ssl_options = #{session_tickets := stateless,
+                                             server_bloom_filter := BloomFilter},
                              handshake_env = 
                                  #handshake_env{ticket_seed = 
                                                     {BaseTicket, {IV, Shard} = Seed}} = HsEnv
                             } = State0, N) ->
     Ticket = generate_statless_ticket(BaseTicket, IV, Shard, State0),
     {State, _} = tls_connection:send_handshake(Ticket, State0),
-     %% Remove first "BaseTicket" when used
+    %% Configure Bloom Filter
+    maybe_init_bloom_filter(BloomFilter),
+    %% Remove first "BaseTicket" when used
     maybe_send_session_ticket(State#state{handshake_env = HsEnv#handshake_env{ticket_seed = Seed}}, N - 1);
 maybe_send_session_ticket(#state{ssl_options = #{session_tickets := stateless},
                                  handshake_env = #handshake_env{ticket_seed = {IV, Shard}},
@@ -1193,6 +1196,18 @@ maybe_send_session_ticket(#state{ssl_options = #{session_tickets := stateless},
     Ticket = generate_statless_ticket(BaseTicket, IV, Shard, State0),
     {State, _} = tls_connection:send_handshake(Ticket, State0),
     maybe_send_session_ticket(State, N - 1).
+
+
+maybe_init_bloom_filter(undefined) ->
+    ok;
+maybe_init_bloom_filter({Name, K, M}) ->
+    ssl_bloom_filter:new(Name, K, M).
+
+
+maybe_update_bloom_filter(undefined, _) ->
+    ok;
+maybe_update_bloom_filter({Name, _, _}, Encrypted) ->
+    ssl_bloom_filter:add_elem(Name, Encrypted).
 
 
 %% Generate ticket field of NewSessionTicket.
@@ -2108,42 +2123,56 @@ get_offered_psks(Extensions) ->
     end.
 
 
-decode_pre_shared_keys(Shard, IV, PSKs) ->
+decode_pre_shared_keys(Shard, IV, PSKs, BloomFilter) ->
     #offered_psks{
        identities = Identities,
        binders = Binders
       } = PSKs,
-    decode_pre_shared_keys(Shard, IV, Identities, Binders, 0, []).
+    decode_pre_shared_keys(Shard, IV, Identities, Binders, 0, BloomFilter, []).
 %%
-decode_pre_shared_keys(_, _, [], [], _, Acc) ->
+decode_pre_shared_keys(_, _, [], [], _, _, Acc) ->
     lists:reverse(Acc);
-decode_pre_shared_keys(Shard, IV, [I|Identities], [B|Binders], Index, Acc) ->
-    {Validity, PSK, Hash} = decode_identity(Shard, IV, I),
+decode_pre_shared_keys(Shard, IV, [I|Identities], [B|Binders], Index, BloomFilter, Acc) ->
+    {Validity, PSK, Hash} = decode_identity(Shard, IV, I, BloomFilter),
     case Validity of
         valid ->
-            decode_pre_shared_keys(Shard, IV, Identities, Binders, Index + 1,
+            decode_pre_shared_keys(Shard, IV, Identities, Binders, Index + 1, BloomFilter,
                                    [{PSK, Index, Hash, B}|Acc]);
         invalid ->
-            decode_pre_shared_keys(Shard, IV, Identities, Binders, Index + 1, Acc)
+            decode_pre_shared_keys(Shard, IV, Identities, Binders, Index + 1, BloomFilter, Acc)
     end.
 
 
 decode_identity(Shard, IV, #psk_identity{
                               identity = I,
-                              obfuscated_ticket_age = ObfAge}) ->
-    case ssl_cipher:decrypt_ticket(I, Shard, IV) of
-        error ->
-            %% Skip PSK if encrypted with an unknown key
-            {invalid, undefined, undefined};
-        #stateless_ticket{
-           hash = Hash,
-           pre_shared_key = PSK,
-           ticket_age_add = TicketAgeAdd,
-           lifetime = Lifetime,
-           timestamp = Timestamp} ->
-            Validity = check_ticket_validity(ObfAge, TicketAgeAdd, Lifetime, Timestamp),
-            {Validity, PSK, Hash}
+                              obfuscated_ticket_age = ObfAge}, BloomFilter) ->
+    case ticket_already_used(I, BloomFilter) of
+        false ->
+            maybe_update_bloom_filter(BloomFilter, I),
+            case ssl_cipher:decrypt_ticket(I, Shard, IV) of
+                error ->
+                    %% Skip PSK if encrypted with an unknown key
+                    {invalid, undefined, undefined};
+                #stateless_ticket{
+                   hash = Hash,
+                   pre_shared_key = PSK,
+                   ticket_age_add = TicketAgeAdd,
+                   lifetime = Lifetime,
+                   timestamp = Timestamp} ->
+                    Validity = check_ticket_validity(ObfAge, TicketAgeAdd, Lifetime, Timestamp),
+                    {Validity, PSK, Hash}
+            end;
+        true ->
+            %% Skip ticket if it was already used
+            {invalid, undefined, undefined}
     end.
+
+
+ticket_already_used(_, undefined) ->
+    false;
+ticket_already_used(Ticket, {Name, _, _}) ->
+    {Value, _} = ssl_bloom_filter:contains(Name, Ticket),
+    Value.
 
 
 %% For identities established externally, an obfuscated_ticket_age of 0 SHOULD be
@@ -2174,7 +2203,8 @@ handle_pre_shared_key(_, undefined, _) ->
     {ok, undefined};
 handle_pre_shared_key(#state{ssl_options = #{session_tickets := disabled}}, _, _) ->
     {ok, undefined};
-handle_pre_shared_key(#state{handshake_env = #handshake_env{ticket_seed = Seed}} = State, PreSharedKeys, Cipher) ->
+handle_pre_shared_key(#state{handshake_env = #handshake_env{ticket_seed = Seed},
+                             ssl_options = #{server_bloom_filter := BloomFilter}} = State, PreSharedKeys, Cipher) ->
     {IV, Shard} = 
         case Seed of 
             {_, {IV0, Shard0}} ->
@@ -2182,7 +2212,7 @@ handle_pre_shared_key(#state{handshake_env = #handshake_env{ticket_seed = Seed}}
             IVS ->
                 IVS
         end,
-    PSKTuples = decode_pre_shared_keys(Shard, IV, PreSharedKeys),
+    PSKTuples = decode_pre_shared_keys(Shard, IV, PreSharedKeys, BloomFilter),
     case select_psk(PSKTuples, Cipher) of
         no_acceptable_psk ->
             {ok, undefined};

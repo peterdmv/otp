@@ -59,6 +59,7 @@ MODULES= \
 	ssl_admin_sup \
 	ssl_alert \
 	ssl_app \
+	ssl_bloom_filter \
 	ssl_certificate \
 	ssl_cipher \
 	ssl_cipher_format \

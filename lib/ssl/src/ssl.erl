@@ -1631,6 +1631,18 @@ handle_option(reuse_sessions = Option, unbound, OptionsMap, #{rules := Rules}) -
 handle_option(reuse_sessions = Option, Value0, OptionsMap, _Env) ->
     Value = validate_option(Option, Value0),
     OptionsMap#{Option => Value};
+handle_option(server_bloom_filter = Option, unbound, OptionsMap, #{rules := Rules}) ->
+    Value = validate_option(Option, default_value(Option, Rules)),
+    OptionsMap#{Option => Value};
+handle_option(server_bloom_filter = Option, Value0,
+              #{session_tickets := SessionTickets} = OptionsMap, #{rules := Rules}) ->
+    case SessionTickets of
+        stateless ->
+            Value = validate_option(Option, Value0),
+            OptionsMap#{Option => Value};
+        _ ->
+            OptionsMap#{Option => default_value(Option, Rules)}
+end;
 handle_option(server_name_indication = Option, unbound, OptionsMap, #{host := Host,
                                                                         role := Role}) ->
     Value = default_option_role(client, server_name_indication_default(Host), Role),
@@ -2076,6 +2088,9 @@ validate_option(session_tickets, Value) when Value =:= disabled orelse
                                              Value =:= auto orelse
                                              Value =:= stateless orelse
                                              Value =:= stateful ->
+    Value;
+validate_option(server_bloom_filter, Value) when (is_tuple(Value) andalso
+                                                  tuple_size(Value) =:= 3) ->
     Value;
 validate_option(Opt, undefined = Value) ->
     AllOpts = maps:keys(?RULES),
