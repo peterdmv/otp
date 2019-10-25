@@ -540,10 +540,11 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
               State, Front, BufferSize0, Rear, SocketOpts0, RecvFrom, BytesToRead, Bin);
         {more, _Size} ->
             %% We do not have a packet in the buffer - wait for more
+            Bin = iolist_to_binary([Bin0,Front0|lists:reverse(Rear0)]),
             {no_record, State#state{socket_options = SocketOpts0,
                                     bytes_to_read = BytesToRead,
                                     start_or_recv_from = RecvFrom,
-                                    user_data_buffer = {[Bin0|Front0],BufferSize0, Rear0}}};
+                                    user_data_buffer = {[Bin],BufferSize0, []}}};
         passive ->
             {no_record, State#state{socket_options = SocketOpts0,
                                     bytes_to_read = BytesToRead,
