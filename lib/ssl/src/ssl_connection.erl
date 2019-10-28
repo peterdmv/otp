@@ -495,7 +495,8 @@ read_application_data(#state{
 
 %% Pick binary from queue front, if empty wait for more data
 read_application_data(State, [Bin|Front], BufferSize, Rear, SocketOpts, RecvFrom, BytesToRead) ->
-    read_application_data_bin(State, Front, BufferSize, Rear, SocketOpts, RecvFrom, BytesToRead, Bin);
+    read_application_data_bin(State, Front, BufferSize - byte_size(Bin), Rear, SocketOpts, RecvFrom,
+                              BytesToRead, Bin);
 read_application_data(State, [] = Front, BufferSize, [] = Rear, SocketOpts, RecvFrom, BytesToRead) ->
     0 = BufferSize, % Assert
     {no_record, State#state{socket_options = SocketOpts,
@@ -504,7 +505,8 @@ read_application_data(State, [] = Front, BufferSize, [] = Rear, SocketOpts, Recv
                             user_data_buffer = {Front,BufferSize,Rear}}};
 read_application_data(State, [], BufferSize, Rear, SocketOpts, RecvFrom, BytesToRead) ->
     [Bin|Front] = lists:reverse(Rear),
-    read_application_data_bin(State, Front, BufferSize, [], SocketOpts, RecvFrom, BytesToRead, Bin).
+    read_application_data_bin(State, Front, BufferSize - byte_size(Bin), [], SocketOpts, RecvFrom,
+                              BytesToRead, Bin).
 
 read_application_data_bin(State, Front, BufferSize, Rear, SocketOpts, RecvFrom, BytesToRead, <<>>) ->
     %% Done with this binary - get next
@@ -513,43 +515,46 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
     %% Decode one packet from a binary
     case get_data(SocketOpts0, BytesToRead, Bin0) of
 	{ok, Data, Bin} -> % Send data
-            BufferSize = BufferSize0 - (byte_size(Bin0) - byte_size(Bin)),
+            %% BufferSize = BufferSize0 - (byte_size(Bin0) - byte_size(Bin)),
             read_application_data_deliver(
-              State, Front0, BufferSize, Rear0, SocketOpts0, RecvFrom, Data, Bin);
+              State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFrom, Data, Bin);
         {more, undefined} ->
             %% We need more data, do not know how much
             if
-                byte_size(Bin0) < BufferSize0 ->
+                BufferSize0 > 0 ->
                     %% We have more data in the buffer besides the first binary - concatenate all and retry
                     Bin = iolist_to_binary([Bin0,Front0|lists:reverse(Rear0)]),
                     read_application_data_bin(
-                      State, [], BufferSize0, [], SocketOpts0, RecvFrom, BytesToRead, Bin);
+                      State, [], 0, [], SocketOpts0, RecvFrom, BytesToRead, Bin);
                 true ->
                     %% All data is in the first binary, no use to retry - wait for more
                     {no_record, State#state{socket_options = SocketOpts0,
                                             bytes_to_read = BytesToRead,
                                             start_or_recv_from = RecvFrom,
-                                            user_data_buffer = {[Bin0|Front0],BufferSize0,Rear0}}}
+                                            user_data_buffer = {[Bin0],byte_size(Bin0),[]}}}
             end;
-        {more, Size} when Size =< BufferSize0 ->
+        {more, Size} when Size =< BufferSize0 + byte_size(Bin0) ->
             %% We have a packet in the buffer - collect it in a binary and decode
-            Sofar = byte_size(Bin0),
-            {Data,Front,Rear} = iovec_from_front(Size - Sofar, Front0, Rear0),
+            {Data, Front, BufferSize, Rear} =
+                iovec_from_front(Size - byte_size(Bin0), Front0, BufferSize0, Rear0),
             Bin = iolist_to_binary([Bin0|Data]),
             read_application_data_bin(
-              State, Front, BufferSize0, Rear, SocketOpts0, RecvFrom, BytesToRead, Bin);
+              State, Front, BufferSize, Rear, SocketOpts0, RecvFrom, BytesToRead, Bin);
         {more, _Size} ->
             %% We do not have a packet in the buffer - wait for more
-            Bin = iolist_to_binary([Bin0,Front0|lists:reverse(Rear0)]),
-            {no_record, State#state{socket_options = SocketOpts0,
-                                    bytes_to_read = BytesToRead,
-                                    start_or_recv_from = RecvFrom,
-                                    user_data_buffer = {[Bin],BufferSize0, []}}};
+            %% Bin = iolist_to_binary([Bin0,Front0|lists:reverse(Rear0)]),
+            {no_record,
+             State#state{socket_options = SocketOpts0,
+                         bytes_to_read = BytesToRead,
+                         start_or_recv_from = RecvFrom,
+                         %% user_data_buffer = {[Bin],BufferSize0, []}}};
+                         user_data_buffer = {[Bin0|Front0],BufferSize0 + byte_size(Bin0), Rear0}}};
         passive ->
-            {no_record, State#state{socket_options = SocketOpts0,
-                                    bytes_to_read = BytesToRead,
-                                    start_or_recv_from = RecvFrom,
-                                    user_data_buffer = {[Bin0|Front0],BufferSize0,Rear0}}};
+            {no_record,
+             State#state{socket_options = SocketOpts0,
+                         bytes_to_read = BytesToRead,
+                         start_or_recv_from = RecvFrom,
+                         user_data_buffer = {[Bin0|Front0],BufferSize0 + byte_size(Bin0), Rear0}}};
 	{error,_Reason} ->
             %% Invalid packet in packet mode
             #state{
@@ -565,10 +570,11 @@ read_application_data_bin(State, Front0, BufferSize0, Rear0, SocketOpts0, RecvFr
 	    deliver_packet_error(
               Connection:pids(State), Transport, Socket, SocketOpts0,
               Buffer, Pid, RecvFrom, Trackers, Connection),
-            {stop, {shutdown, normal}, State#state{socket_options = SocketOpts0,
-                                                   bytes_to_read = BytesToRead,
-                                                   start_or_recv_from = RecvFrom,
-                                                   user_data_buffer = {[Buffer],BufferSize0,[]}}}
+            {stop, {shutdown, normal},
+             State#state{socket_options = SocketOpts0,
+                         bytes_to_read = BytesToRead,
+                         start_or_recv_from = RecvFrom,
+                         user_data_buffer = {[Buffer],BufferSize0 + byte_size(Bin0),[]}}}
     end.
 
 read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvFrom, Data, Bin0) ->
@@ -589,7 +595,7 @@ read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvF
             %% Passive mode, wait for active once or recv
             {no_record,
              State#state{
-               user_data_buffer = {[Bin0 |Front],BufferSize,Rear},
+               user_data_buffer = {[Bin0 |Front], BufferSize + byte_size(Bin0), Rear},
                start_or_recv_from = undefined,
                 bytes_to_read = undefined,
                socket_options = SocketOpts
@@ -600,13 +606,13 @@ read_application_data_deliver(State, Front, BufferSize, Rear, SocketOpts0, RecvF
 
 
 read_application_dist_data(DHandle, [Bin|Front], BufferSize, Rear) ->
-    read_application_dist_data(DHandle, Front, BufferSize, Rear, Bin);
+    read_application_dist_data(DHandle, Front, BufferSize - byte_size(Bin), Rear, Bin);
 read_application_dist_data(_DHandle, [] = Front, BufferSize, [] = Rear) ->
     BufferSize = 0,
     {Front,BufferSize,Rear};
 read_application_dist_data(DHandle, [], BufferSize, Rear) ->
     [Bin|Front] = lists:reverse(Rear),
-    read_application_dist_data(DHandle, Front, BufferSize, [], Bin).
+    read_application_dist_data(DHandle, Front, BufferSize - byte_size(Bin), [], Bin).
 %%
 read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
     case Bin0 of
@@ -624,7 +630,7 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
             erlang:dist_ctrl_put_data(DHandle, DataC),
             erlang:dist_ctrl_put_data(DHandle, DataD),
             read_application_dist_data(
-              DHandle, Front0, BufferSize - (4*4+SizeA+SizeB+SizeC+SizeD), Rear0, Rest);
+              DHandle, Front0, BufferSize, Rear0, Rest);
         <<SizeA:32, DataA:SizeA/binary,
           SizeB:32, DataB:SizeB/binary,
           SizeC:32, DataC:SizeC/binary, Rest/binary>>
@@ -634,7 +640,7 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
             erlang:dist_ctrl_put_data(DHandle, DataB),
             erlang:dist_ctrl_put_data(DHandle, DataC),
             read_application_dist_data(
-              DHandle, Front0, BufferSize - (3*4+SizeA+SizeB+SizeC), Rear0, Rest);
+              DHandle, Front0, BufferSize, Rear0, Rest);
         <<SizeA:32, DataA:SizeA/binary,
           SizeB:32, DataB:SizeB/binary, Rest/binary>>
           when 0 < SizeA, 0 < SizeB ->
@@ -642,20 +648,21 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
             erlang:dist_ctrl_put_data(DHandle, DataA),
             erlang:dist_ctrl_put_data(DHandle, DataB),
             read_application_dist_data(
-              DHandle, Front0, BufferSize - (2*4+SizeA+SizeB), Rear0, Rest);
+              DHandle, Front0, BufferSize, Rear0, Rest);
         %% END Optimization
         %%
         %% Basic one packet code path
         <<Size:32, Data:Size/binary, Rest/binary>> ->
             %% We have a complete packet in the first binary
             0 < Size andalso erlang:dist_ctrl_put_data(DHandle, Data),
-            read_application_dist_data(DHandle, Front0, BufferSize - (4+Size), Rear0, Rest);
-        <<Size:32, FirstData/binary>> when 4+Size =< BufferSize ->
+            read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Rest);
+        <<Size:32, FirstData/binary>> when Size - byte_size(FirstData) =< BufferSize ->
             %% We have a complete packet in the buffer
             %% - fetch the missing content from the buffer front
-            {Data,Front,Rear} = iovec_from_front(Size - byte_size(FirstData), Front0, Rear0),
+            {Data,Front,BufferSize1,Rear} =
+                iovec_from_front(Size - byte_size(FirstData), Front0, BufferSize, Rear0),
             0 < Size andalso erlang:dist_ctrl_put_data(DHandle, [FirstData | Data]),
-            read_application_dist_data(DHandle, Front, BufferSize - (4+Size), Rear);
+            read_application_dist_data(DHandle, Front, BufferSize1, Rear);
         <<Bin/binary>> ->
             %% In OTP-21 the match context reuse optimization fails if we use Bin0 in recursion, so here we
             %% match out the whole binary which will trick the optimization into keeping the match context
@@ -664,74 +671,75 @@ read_application_dist_data(DHandle, Front0, BufferSize, Rear0, Bin0) ->
                 <<_Size:32, _InsufficientData/binary>> ->
                     %% We have a length field in the first binary but there is not enough data
                     %% in the buffer to form a complete packet - await more data
-                    {[Bin|Front0],BufferSize,Rear0};
-                <<IncompleteLengthField/binary>> when 4 < BufferSize ->
+                    {[Bin|Front0],BufferSize+byte_size(Bin),Rear0};
+                <<IncompleteLengthField/binary>> when 4 - byte_size(IncompleteLengthField) =< BufferSize ->
                     %% We do not have a length field in the first binary but the buffer
                     %% contains enough data to maybe form a packet
                     %% - fetch a tiny binary from the buffer front to complete the length field
-                    {FirstLengthField,Front,Rear} =
+                    {FirstLengthField,Front,BufferSize1,Rear} =
                         case IncompleteLengthField of
                             <<>> ->
-                                iovec_from_front(4, Front0, Rear0);
+                                iovec_from_front(4, Front0, BufferSize, Rear0);
                             _ ->
                                 iovec_from_front(
-                                  4 - byte_size(IncompleteLengthField), Front0, Rear0)
+                                  4 - byte_size(IncompleteLengthField), Front0, BufferSize, Rear0)
                         end,
                     LengthBin = iolist_to_binary(FirstLengthField),
-                    read_application_dist_data(DHandle, Front, BufferSize, Rear, LengthBin);
+                    read_application_dist_data(DHandle, Front, BufferSize1, Rear, LengthBin);
                 <<IncompleteLengthField/binary>> ->
                     %% We do not have enough data in the buffer to even form a length field - await more data
                     case IncompleteLengthField of
                         <<>> ->
                             {Front0,BufferSize,Rear0};
                         _ ->
-                            {[IncompleteLengthField|Front0],BufferSize,Rear0}
+                            {[IncompleteLengthField|Front0],
+                             BufferSize + byte_size(IncompleteLengthField),Rear0}
                     end
             end
     end.
 
 
-iovec_from_front(Size, Front, Rear) ->
-    iovec_from_front(Size, Front, Rear, []).
+iovec_from_front(Size, Front, BufferSize, Rear) ->
+    iovec_from_front(Size, Front, BufferSize, Rear, []).
 %%
-iovec_from_front(0, Front, Rear, Acc) ->
-    {lists:reverse(Acc),Front,Rear};
-iovec_from_front(Size, [], Rear, Acc) ->
+iovec_from_front(0, Front, BufferSize, Rear, Acc) ->
+    {lists:reverse(Acc), Front, BufferSize, Rear};
+iovec_from_front(Size, [], BufferSize, Rear, Acc) ->
     case Rear of
         %% Avoid lists:reverse/1 for simple cases.
         %% Case clause for [] to avoid infinite loop.
         [_] ->
-            iovec_from_front(Size, Rear, [], Acc);
+            iovec_from_front(Size, Rear, BufferSize, [], Acc);
         [Bin2,Bin1] ->
-            iovec_from_front(Size, [Bin1,Bin2], [], Acc);
+            iovec_from_front(Size, [Bin1,Bin2], BufferSize, [], Acc);
         [Bin3,Bin2,Bin1] ->
-            iovec_from_front(Size, [Bin1,Bin2,Bin3], [], Acc);
+            iovec_from_front(Size, [Bin1,Bin2,Bin3], BufferSize, [], Acc);
         [_,_,_|_] = Rear ->
-            iovec_from_front(Size, lists:reverse(Rear), [], Acc)
+            iovec_from_front(Size, lists:reverse(Rear), BufferSize, [], Acc)
     end;
-iovec_from_front(Size, [Bin|Front], Rear, []) ->
+iovec_from_front(Size, [Bin|Front], BufferSize, Rear, []) ->
     case Bin of
         <<Last:Size/binary>> -> % Just enough
-            {[Last],Front,Rear};
+            {[Last],Front,BufferSize - Size, Rear};
         <<Last:Size/binary, Rest/binary>> -> % More than enough, split here
-            {[Last],[Rest|Front],Rear};
+            {[Last],[Rest|Front], BufferSize - Size, Rear};
         <<>> -> % Not enough, skip empty binaries
-            iovec_from_front(Size, Front, Rear, []);
+            iovec_from_front(Size, Front, BufferSize, Rear, []);
         <<_/binary>> -> % Not enough
             BinSize = byte_size(Bin),
-            iovec_from_front(Size - BinSize, Front, Rear, [Bin])
+            iovec_from_front(Size - BinSize, Front, BufferSize - BinSize, Rear, [Bin])
     end;
-iovec_from_front(Size, [Bin|Front], Rear, Acc) ->
+iovec_from_front(Size, [Bin|Front], BufferSize, Rear, Acc) ->
     case Bin of
         <<Last:Size/binary>> -> % Just enough
-            {lists:reverse(Acc, [Last]),Front,Rear};
+            {lists:reverse(Acc, [Last]),Front,BufferSize - byte_size(Bin), Rear};
         <<Last:Size/binary, Rest/binary>> -> % More than enough, split here
-            {lists:reverse(Acc, [Last]),[Rest|Front],Rear};
+            {lists:reverse(Acc, [Last]),[Rest|Front], BufferSize - Size , Rear};
         <<>> -> % Not enough, skip empty binaries
-            iovec_from_front(Size, Front, Rear, Acc);
+            iovec_from_front(Size, Front, BufferSize, Rear, Acc);
         <<_/binary>> -> % Not enough
             BinSize = byte_size(Bin),
-            iovec_from_front(Size - BinSize, Front, Rear, [Bin|Acc])
+            iovec_from_front(Size - BinSize, Front, BufferSize - BinSize, Rear, [Bin|Acc])
     end.
 
 
