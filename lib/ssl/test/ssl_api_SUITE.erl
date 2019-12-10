@@ -135,7 +135,9 @@ tls13_group() ->
     [
      supported_groups,
      honor_server_cipher_order_tls13,
-     honor_client_cipher_order_tls13
+     honor_client_cipher_order_tls13,
+     client_options_negative_version_gap,
+     client_options_negative_dependency
     ].
 
 
@@ -1747,6 +1749,23 @@ honor_client_cipher_order_tls13(Config) when is_list(Config) ->
                                                                       prf => sha384}).
 
 %%--------------------------------------------------------------------
+client_options_negative_version_gap() ->
+    [{doc,"Test client options with faulty version gap."}].
+client_options_negative_version_gap(Config) when is_list(Config) ->
+    start_client_negative(Config, [{versions, ['tlsv1', 'tlsv1.3']}],
+                          {options, missing_version,
+                           {'tlsv1.2', {versions,[tlsv1, 'tlsv1.3']}}}).
+
+%%--------------------------------------------------------------------
+client_options_negative_dependency() ->
+    [{doc,"Test client options with faulty version gap."}].
+client_options_negative_dependency(Config) when is_list(Config) ->
+    start_client_negative(Config, [{versions, ['tlsv1.1', 'tlsv1.2']},
+                                   {anti_replay, '10k'}],
+                          {options,dependency,
+                           {anti_replay,{session_tickets,[stateless]}}}).
+
+%%--------------------------------------------------------------------
 honor_server_cipher_order_tls13() ->
     [{doc,"Test API honor server cipher order in TLS 1.3."}].
 honor_server_cipher_order_tls13(Config) when is_list(Config) ->
@@ -2083,6 +2102,18 @@ honor_cipher_order(Config, Honor, ServerCiphers, ClientCiphers, Expected) ->
 
     ssl_test_lib:close(Server),
     ssl_test_lib:close(Client).
+
+start_client_negative(Config, Options, Error) ->
+    ClientOpts = ssl_test_lib:ssl_options(client_rsa_opts, Config),
+    {ClientNode, _, Hostname} = ssl_test_lib:run_where(Config),
+    Client = ssl_test_lib:start_client([{node, ClientNode}, {port, 0},
+					{host, Hostname},
+					{from, self()},
+					{mfa, {?MODULE, connection_info_result, []}},
+					{options, Options ++ ClientOpts}]),
+    ct:pal("DEBUG1: ~p", [Client]),
+    ct:pal("DEBUG2: ~p", [{connect_failed, Error}]),
+    {connect_failed, Error} = Client.
 
 connection_info_result(Socket) ->
     {ok, Info} = ssl:connection_information(Socket, [protocol, selected_cipher_suite]),
