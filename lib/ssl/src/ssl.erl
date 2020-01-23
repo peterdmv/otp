@@ -99,6 +99,9 @@
          suite_to_openssl_str/1,
          str_to_suite/1]).
 
+%% QUIC-TLS
+-export([start_quic_tls_client/0]).
+
 -deprecated({ssl_accept, 1, eventually}).
 -deprecated({ssl_accept, 2, eventually}).
 -deprecated({ssl_accept, 3, eventually}).
@@ -928,6 +931,22 @@ connection_information(#sslsocket{pid = [Pid|_]}, Items) when is_pid(Pid) ->
 	Error ->
             Error
     end.
+
+%---------------------------------------------------------------------
+-spec start_quic_tls_client() ->
+          {ok, pid()}.
+%%
+%% Description: Start QUIC-TLS client
+%%--------------------------------------------------------------------
+start_quic_tls_client() ->
+    try
+	{ok, Config} = handle_options(Options, client, Host),
+        tls_connection:start_quic_tls(client, Config)
+    catch
+	throw:Error ->
+	    Error
+    end.
+
 
 %%--------------------------------------------------------------------
 -spec peername(SslSocket) -> {ok, {Address, Port}} |

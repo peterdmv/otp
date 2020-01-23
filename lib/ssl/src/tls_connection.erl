@@ -44,7 +44,7 @@
 %% Internal application API
 
 %% Setup
--export([start_fsm/8, start_link/8, init/1, pids/1]).
+-export([start_fsm/8, start_link/8, init/1, pids/1, start_quic_tls/2]).
 
 %% State transition handling	 
 -export([next_event/3, next_event/4, 
@@ -121,6 +121,15 @@ start_fsm(Role, Host, Port, Socket, {#{erl_dist := true},_, Trackers} = Opts,
 							 Opts, User, CbInfo]), 
 	{ok, SslSocket} = ssl_connection:socket_control(?MODULE, Socket, [Pid, Sender], CbModule, Trackers),
         ssl_connection:handshake(SslSocket, Timeout)
+    catch
+	error:{badmatch, {error, _} = Error} ->
+	    Error
+    end.
+
+start_quic_tls(Role, Config) ->
+    try
+	{ok, Pid} = tls_connection_sup:start_child([Role, Sender, Host, Port, Socket,
+						    Opts, User, CbInfo])
     catch
 	error:{badmatch, {error, _} = Error} ->
 	    Error
