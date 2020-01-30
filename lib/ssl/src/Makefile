@@ -99,7 +99,8 @@ MODULES= \
 	tls_server_sup\
 	tls_socket \
 	tls_sup \
-	tls_v1
+	tls_v1 \
+	quic_tls
 
 
 INTERNAL_HRL_FILES = \

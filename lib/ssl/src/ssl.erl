@@ -98,7 +98,9 @@
          tls_version/1, 
          suite_to_str/1,
          suite_to_openssl_str/1,
-         str_to_suite/1]).
+         str_to_suite/1,
+         quic_tls/2,
+         quic_tls/3]).
 
 -deprecated({ssl_accept, 1, eventually}).
 -deprecated({ssl_accept, 2, eventually}).
@@ -1484,7 +1486,31 @@ str_to_suite(CipherSuiteName) ->
         _:_ ->
             {error, {not_recognized, CipherSuiteName}}
     end.
-           
+
+
+quic_tls(client, Host, Options) ->
+    CbInfo = default_cb_info(quic_tls),
+
+    try
+	{ok, Config0} = handle_options(Options, client, Host),
+        Config = Config0#config{transport_info = CbInfo},
+        tls_socket:connect(Host,0,Config,infinity)
+    catch
+	throw:Error ->
+	    Error
+    end.
+
+
+quic_tls(server, SslOpts) ->
+    ok.
+
+
+get_flight(SslSocket) ->
+    ok.
+
+put_flight(SslSocket, Flight) ->
+    ok.
+
 %%%--------------------------------------------------------------
 %%% Internal functions
 %%%--------------------------------------------------------------------
@@ -2559,7 +2585,9 @@ default_option_role(_,_,_) ->
 default_cb_info(tls) ->
     {gen_tcp, tcp, tcp_closed, tcp_error, tcp_passive};
 default_cb_info(dtls) ->
-    {gen_udp, udp, udp_closed, udp_error, udp_passive}.
+    {gen_udp, udp, udp_closed, udp_error, udp_passive};
+default_cb_info(quic_tls) ->
+    {quic_tls, quic_tls, undefined, undefined, undefined}.
 
 include_security_info([]) ->
     false;

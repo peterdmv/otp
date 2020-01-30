@@ -88,7 +88,7 @@
 %% gen_statem callbacks
 -export([callback_mode/0, terminate/3, code_change/4, format_status/2]).
  
--export([encode_handshake/4, send_key_update/2, update_cipher_key/2]).
+-export([encode_handshake/5, send_key_update/2, update_cipher_key/2]).
 
 -define(DIST_CNTRL_SPAWN_OPTS, [{priority, max}]).
 
@@ -416,13 +416,14 @@ renegotiate(#state{static_env = #static_env{role = server,
 send_handshake(Handshake, State) ->
     send_handshake_flight(queue_handshake(Handshake, State)).
 
-queue_handshake(Handshake, #state{handshake_env = #handshake_env{tls_handshake_history = Hist0} = HsEnv,
+queue_handshake(Handshake, #state{static_env = #static_env{transport_cb = Transport},
+                                  handshake_env = #handshake_env{tls_handshake_history = Hist0} = HsEnv,
 				  connection_env = #connection_env{negotiated_version = Version},
                                   flight_buffer = Flight0,
                                   ssl_options = #{log_level := LogLevel},
 				  connection_states = ConnectionStates0} = State0) ->
     {BinHandshake, ConnectionStates, Hist} =
-	encode_handshake(Handshake, Version, ConnectionStates0, Hist0),
+	encode_handshake(Handshake, Version, ConnectionStates0, Hist0, Transport),
     ssl_logger:debug(LogLevel, outbound, 'handshake', Handshake),
     ssl_logger:debug(LogLevel, outbound, 'record', BinHandshake),
 
@@ -602,11 +603,16 @@ init({call, From}, {start, Timeout},
     Hello1 = tls_handshake_1_3:maybe_add_binders(Hello, TicketData, HelloVersion),
 
     {BinMsg, ConnectionStates, Handshake} =
-        encode_handshake(Hello1,  HelloVersion, ConnectionStates0, Handshake0),
+        encode_handshake(Hello1,  HelloVersion, ConnectionStates0, Handshake0, Transport),
 
     tls_socket:send(Transport, Socket, BinMsg),
     ssl_logger:debug(LogLevel, outbound, 'handshake', Hello1),
-    ssl_logger:debug(LogLevel, outbound, 'record', BinMsg),
+    case Transport of
+        quic_tls ->
+            gen_statem:reply(From, quic_tls_started);
+        _Else ->
+            ssl_logger:debug(LogLevel, outbound, 'record', BinMsg)
+    end,
 
     %% RequestedVersion is used as the legacy record protocol version and shall be
     %% {3,3} in case of TLS 1.2 and higher. In all other cases it defaults to the
@@ -1258,7 +1264,11 @@ handle_alerts([Alert | Alerts], {next_state, StateName, State}) ->
 handle_alerts([Alert | Alerts], {next_state, StateName, State, _Actions}) ->
      handle_alerts(Alerts, ssl_connection:handle_alert(Alert, StateName, State)).
 
-encode_handshake(Handshake, Version, ConnectionStates0, Hist0) ->
+encode_handshake(Handshake, Version, ConnectionStates0, Hist0, quic_tls) ->
+    Frag = tls_handshake:encode_handshake(Handshake, Version),
+    Hist = ssl_handshake:update_handshake_history(Hist0, Frag),
+    {Frag, ConnectionStates0, Hist};
+encode_handshake(Handshake, Version, ConnectionStates0, Hist0, Transport) ->
     Frag = tls_handshake:encode_handshake(Handshake, Version),
     Hist = ssl_handshake:update_handshake_history(Hist0, Frag),
     {Encoded, ConnectionStates} =

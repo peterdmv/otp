@@ -126,6 +126,15 @@ upgrade(Socket, #config{transport_info = {Transport,_,_,_,_}= CbInfo,
     end.
 
 connect(Address, Port,
+	#config{transport_info = {quic_tls, _, _, _, _} = CbInfo, ssl = SslOpts,
+		emulated = EmOpts, connection_cb = ConnetionCb},
+	Timeout) ->
+    ssl_connection:connect(ConnetionCb, Address, Port, self(),
+                           {SslOpts,
+                            emulated_socket_options(EmOpts, #socket_options{}), undefined},
+                           self(), CbInfo, Timeout);
+
+connect(Address, Port,
 	#config{transport_info = CbInfo, inet_user = UserOpts, ssl = SslOpts,
 		emulated = EmOpts, inet_ssl = SocketOpts, connection_cb = ConnetionCb},
 	Timeout) ->
@@ -147,10 +156,15 @@ connect(Address, Port,
 	    {error, {options, {socket_options, UserOpts}}}
     end.
 
+socket(Pids, quic_tls = Transport, Socket, ConnectionCb, Trackers) ->
+    #sslsocket{pid = Pids,
+	       %% "The name "fd" is keept for backwards compatibility
+	       fd = {Transport, Socket, ConnectionCb, Trackers}};
 socket(Pids, Transport, Socket, ConnectionCb, Trackers) ->
     #sslsocket{pid = Pids, 
 	       %% "The name "fd" is keept for backwards compatibility
 	       fd = {Transport, Socket, ConnectionCb, Trackers}}.
+
 setopts(gen_tcp, Socket = #sslsocket{pid = {ListenSocket, #config{trackers = Trackers}}}, Options) ->
     Tracker = proplists:get_value(option_tracker, Trackers),
     {SockOpts, EmulatedOpts} = split_options(Options),

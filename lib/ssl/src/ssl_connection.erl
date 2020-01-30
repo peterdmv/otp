@@ -121,6 +121,8 @@ handshake(Connection, Port, Socket, Opts, User, CbInfo, Timeout) ->
 %%--------------------------------------------------------------------
 handshake(#sslsocket{pid = [Pid|_]} = Socket, Timeout) ->  
     case call(Pid, {start, Timeout}) of
+        quic_tls_started ->
+            {ok, Socket};
 	connected ->
 	    {ok, Socket};
         {ok, Ext} ->
@@ -185,6 +187,8 @@ socket_control(Connection, Socket, Pids, Transport, udp_listener) ->
     %% dtls listener process must have the socket control
     {ok, Connection:socket(Pids, Transport, Socket, undefined)};
 
+socket_control(tls_connection = Connection, Socket, [_Pid|_] = Pids, quic_tls = Transport, Trackers) ->
+    {ok, Connection:socket(Pids, Transport, Socket, Trackers)};
 socket_control(tls_connection = Connection, Socket, [Pid|_] = Pids, Transport, Trackers) ->
     case Transport:controlling_process(Socket, Pid) of
 	ok ->
