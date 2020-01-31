@@ -132,6 +132,14 @@ start(internal, #client_hello{} = Hello, State0, _Module) ->
         {State, negotiated, PSK} ->  %% Session Resumption with PSK
             {next_state, negotiated, State, [{next_event, internal, {start_handshake, PSK}}]}
     end;
+start({call, From}, {start_fsm, Timeout}, State0, _Module) ->
+    case tls_handshake_1_3:do_start(start_fsm, State0) of
+        #alert{} = Alert ->
+            ssl_connection:handle_own_alert(Alert, {3,4}, start, State0);
+        {State, NextState} ->
+            {next_state, NextState, State#state{start_or_recv_from = From},
+             [{reply, From, quic_tls_started}, {{timeout, handshake}, Timeout, close}]}
+    end;
 start(internal, #server_hello{} = ServerHello, State0, _Module) ->
     case tls_handshake_1_3:do_start(ServerHello, State0) of
         #alert{} = Alert ->

@@ -100,7 +100,9 @@
          suite_to_openssl_str/1,
          str_to_suite/1,
          quic_tls/2,
-         quic_tls/3]).
+         quic_tls/3,
+         get_flight/1,
+         put_flight/2]).
 
 -deprecated({ssl_accept, 1, eventually}).
 -deprecated({ssl_accept, 2, eventually}).
@@ -1487,7 +1489,6 @@ str_to_suite(CipherSuiteName) ->
             {error, {not_recognized, CipherSuiteName}}
     end.
 
-
 quic_tls(client, Host, Options) ->
     CbInfo = default_cb_info(quic_tls),
 
@@ -1500,15 +1501,13 @@ quic_tls(client, Host, Options) ->
 	    Error
     end.
 
-
-quic_tls(server, SslOpts) ->
+quic_tls(server, _SslOpts) ->
     ok.
 
-
-get_flight(SslSocket) ->
+get_flight(_SslSocket) ->
     ok.
 
-put_flight(SslSocket, Flight) ->
+put_flight(_SslSocket, _Flight) ->
     ok.
 
 %%%--------------------------------------------------------------

@@ -106,7 +106,12 @@ start_fsm(Role, Host, Port, Socket, {#{erl_dist := false},_, Trackers} = Opts,
 	{ok, Pid} = tls_connection_sup:start_child([Role, Sender, Host, Port, Socket, 
 						    Opts, User, CbInfo]), 
 	{ok, SslSocket} = ssl_connection:socket_control(?MODULE, Socket, [Pid, Sender], CbModule, Trackers),
-        ssl_connection:handshake(SslSocket, Timeout)
+        case CbModule of
+            quic_tls ->
+                ssl_connection:start_quic_tls(SslSocket, Timeout);
+            _Else ->
+                ssl_connection:handshake(SslSocket, Timeout)
+        end
     catch
 	error:{badmatch, {error, _} = Error} ->
 	    Error
@@ -150,7 +155,12 @@ init([Role, Sender, Host, Port, Socket, {#{erl_dist := ErlDist}, _, _} = Options
     try 
 	State = ssl_connection:ssl_config(State0#state.ssl_options, Role, State0),
         initialize_tls_sender(State),
-        gen_statem:enter_loop(?MODULE, [], init, State)
+        case CbInfo of
+            {quic_tls, _, _, _, _} ->
+                gen_statem:enter_loop(?MODULE, [], start, State);
+            _Else ->
+                gen_statem:enter_loop(?MODULE, [], init, State)
+        end
     catch throw:Error ->
             EState = State0#state{protocol_specific = Map#{error => Error}},
             gen_statem:enter_loop(?MODULE, [], error, EState) 
@@ -585,7 +595,7 @@ init({call, From}, {start, Timeout},
 	    session = NewSession,
 	    connection_states = ConnectionStates0
 	   } = State0) ->
-    KeyShare = maybe_generate_client_shares(SslOpts),
+    KeyShare = tls_handshake_1_3:maybe_generate_client_shares(SslOpts),
     Session = ssl_session:client_select_session({Host, Port, SslOpts}, Cache, CacheCb, NewSession),
     %% Update UseTicket in case of automatic session resumption
     {UseTicket, State1} = tls_handshake_1_3:maybe_automatic_session_resumption(State0),
@@ -1268,7 +1278,7 @@ encode_handshake(Handshake, Version, ConnectionStates0, Hist0, quic_tls) ->
     Frag = tls_handshake:encode_handshake(Handshake, Version),
     Hist = ssl_handshake:update_handshake_history(Hist0, Frag),
     {Frag, ConnectionStates0, Hist};
-encode_handshake(Handshake, Version, ConnectionStates0, Hist0, Transport) ->
+encode_handshake(Handshake, Version, ConnectionStates0, Hist0, _Transport) ->
     Frag = tls_handshake:encode_handshake(Handshake, Version),
     Hist = ssl_handshake:update_handshake_history(Hist0, Frag),
     {Encoded, ConnectionStates} =
@@ -1395,16 +1405,6 @@ ensure_sender_terminate(_,  #state{protocol_specific = #{sender := Sender}}) ->
                    end
            end,
     spawn(Kill).
-
-maybe_generate_client_shares(#{versions := [Version|_],
-                               supported_groups :=
-                                   #supported_groups{
-                                      supported_groups = [Group|_]}})
-  when Version =:= {3,4} ->
-    %% Generate only key_share entry for the most preferred group
-    ssl_cipher:generate_client_shares([Group]);
-maybe_generate_client_shares(_) ->
-    undefined.
 
 choose_tls_version(#{versions := Versions},
                    #client_hello{

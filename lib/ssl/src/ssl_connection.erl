@@ -41,7 +41,7 @@
 
 -export([connect/8, handshake/7, handshake/2, handshake/3, handle_common_event/5,
          handshake_continue/3, handshake_cancel/1,
-	 socket_control/4, socket_control/5]).
+	 socket_control/4, socket_control/5, start_quic_tls/2]).
 
 %% User Events 
 -export([send/2, recv/3, close/2, shutdown/2,
@@ -79,7 +79,7 @@
 %%--------------------------------------------------------------------
 -spec connect(tls_connection | dtls_connection,
 	      ssl:host(), inet:port_number(), 
-	      port() | {tuple(), port()}, %% TLS | DTLS  
+	      port() | {tuple(), port()} | pid(), %% TLS | DTLS | QUIC-TLS
 	      {ssl_options(), #socket_options{},
 	       %% Tracker only needed on server side
 	       undefined},
@@ -3079,3 +3079,15 @@ no_records(Extensions) ->
     maps:map(fun(_, Value) ->
                      ssl_handshake:extension_value(Value)
              end, Extensions).  
+
+start_quic_tls(#sslsocket{pid = [Pid|_]} = Socket, Timeout) ->
+    case call(Pid, {start_fsm, Timeout}) of
+        quic_tls_started ->
+            {ok, Socket};
+	connected ->
+	    {ok, Socket};
+        {ok, Ext} ->
+            {ok, Socket, no_records(Ext)};
+        Error ->
+	    Error
+    end.

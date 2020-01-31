@@ -53,7 +53,8 @@
          get_ticket_data/3,
          maybe_add_binders/3,
          maybe_add_binders/4,
-         maybe_automatic_session_resumption/1]).
+         maybe_automatic_session_resumption/1,
+         maybe_generate_client_shares/1]).
 
 -export([is_valid_binder/4]).
 
@@ -636,6 +637,58 @@ do_start(#client_hello{cipher_suites = ClientCiphers,
             Alert
     end;
 %% TLS Client
+do_start(start_fsm,
+         #state{static_env = #static_env{role = client,
+                                         host = Host,
+                                         port = Port,
+                                         transport_cb = Transport,
+                                         socket = Socket},
+                handshake_env = #handshake_env{renegotiation = {Renegotiation, _}} = HsEnv,
+                connection_env = #connection_env{negotiated_version = NegotiatedVersion},
+                ssl_options = #{use_ticket := UseTicket,
+                                session_tickets := SessionTickets,
+                                log_level := LogLevel} = SslOpts,
+                session = #session{own_certificate = Cert} = Session0,
+                connection_states = ConnectionStates0
+               } = State0) ->
+
+    %% {Ref,Maybe} = maybe(),
+    try
+        ClientKeyShare = maybe_generate_client_shares(SslOpts),
+        SessionId = crypto:strong_rand_bytes(32),
+
+        %% Update UseTicket in case of automatic session resumption
+        {UseTicket, State1} = tls_handshake_1_3:maybe_automatic_session_resumption(State0),
+        TicketData = get_ticket_data(self(), SessionTickets, UseTicket),
+
+        Hello0 = tls_handshake:client_hello(Host, Port, ConnectionStates0, SslOpts,
+                                           SessionId, Renegotiation, Cert, ClientKeyShare,
+                                           TicketData),
+
+        #state{handshake_env = #handshake_env{tls_handshake_history = HHistory0}} = State1,
+
+        %% Update pre_shared_key extension with binders (TLS 1.3)
+        Hello = tls_handshake_1_3:maybe_add_binders(Hello0, HHistory0, TicketData, NegotiatedVersion),
+
+        {BinMsg, ConnectionStates, HHistory} =
+            tls_connection:encode_handshake(Hello,  NegotiatedVersion, ConnectionStates0, HHistory0,
+                                            quic_tls),
+        tls_socket:send(Transport, Socket, BinMsg),
+        ssl_logger:debug(LogLevel, outbound, 'handshake', Hello),
+        ssl_logger:debug(LogLevel, outbound, 'record', BinMsg),
+
+        State = State1#state{
+                  connection_states = ConnectionStates,
+                  session = Session0#session{session_id = Hello#client_hello.session_id},
+                  handshake_env = HsEnv#handshake_env{tls_handshake_history = HHistory},
+                  key_share = ClientKeyShare},
+
+        {State, wait_sh}
+
+    catch
+        {_Ref, #alert{} = Alert} ->
+            Alert
+    end;
 do_start(#server_hello{cipher_suite = SelectedCipherSuite,
                        session_id = SessionId,
                        extensions = Extensions},
@@ -698,7 +751,8 @@ do_start(#server_hello{cipher_suite = SelectedCipherSuite,
         Hello = tls_handshake_1_3:maybe_add_binders(Hello0, HHistory0, TicketData, NegotiatedVersion),
 
         {BinMsg, ConnectionStates, HHistory} =
-            tls_connection:encode_handshake(Hello,  NegotiatedVersion, ConnectionStates0, HHistory0),
+            tls_connection:encode_handshake(Hello,  NegotiatedVersion, ConnectionStates0, HHistory0,
+                                            undefined),
         tls_socket:send(Transport, Socket, BinMsg),
         ssl_logger:debug(LogLevel, outbound, 'handshake', Hello),
         ssl_logger:debug(LogLevel, outbound, 'record', BinMsg),
@@ -2268,6 +2322,15 @@ maybe_automatic_session_resumption(#state{
                                      } = State) ->
     {UseTicket, State}.
 
+maybe_generate_client_shares(#{versions := [Version|_],
+                               supported_groups :=
+                                   #supported_groups{
+                                      supported_groups = [Group|_]}})
+  when Version =:= {3,4} ->
+    %% Generate only key_share entry for the most preferred group
+    ssl_cipher:generate_client_shares([Group]);
+maybe_generate_client_shares(_) ->
+    undefined.
 
 cipher_hash_algos(Ciphers) ->
     Fun = fun(Cipher) ->
