@@ -24,7 +24,7 @@
 %%----------------------------------------------------------------------
 
 -module(tls_handshake_1_3).
-
+-compile(export_all).
 -include("tls_handshake_1_3.hrl").
 -include("ssl_alert.hrl").
 -include("ssl_cipher.hrl").
