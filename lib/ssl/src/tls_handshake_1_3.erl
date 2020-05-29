@@ -1322,18 +1322,19 @@ process_certificate(#certificate_1_3{certificate_list = Certs0},
                                             SslOptions, CRLDbHandle, Role, Host) of
                 {ok, {PeerCert, PublicKeyInfo}} ->
                     State = store_peer_cert(State0, PeerCert, PublicKeyInfo),
-                    NewState = check_ocsp(State, Certs0),
-                    case is_ocsp_status_revoked(
-                        NewState#state.handshake_env#handshake_env.ocsp_stapling_state) of
-                        true ->
-                            {error,
-                             {?ALERT_REC(
-                                 ?FATAL, ?BAD_CERTIFICATE_STATUS_RESPONSE,
-                                 revoked_certificate),
-                              State}};
-                        false ->
-                            {ok, {NewState, wait_cv}}
-                    end;
+                    %% NewState = check_ocsp(State, Certs0),
+                    %% case is_ocsp_status_revoked(
+                    %%     NewState#state.handshake_env#handshake_env.ocsp_stapling_state) of
+                    %%     true ->
+                    %%         {error,
+                    %%          {?ALERT_REC(
+                    %%              ?FATAL, ?BAD_CERTIFICATE_STATUS_RESPONSE,
+                    %%              revoked_certificate),
+                    %%           State}};
+                    %%     false ->
+                    %%         {ok, {NewState, wait_cv}}
+                    %% end;
+                    {ok, {State, wait_cv}};
                 {error, Reason} ->
                     State = update_encryption_state(Role, State0),
                     {error, {Reason, State}};
@@ -1348,30 +1349,32 @@ process_certificate(#certificate_1_3{certificate_list = Certs0},
                                 "Client certificate uses unsupported signature algorithm"), State}}
     end.
 
-check_ocsp(#state{
-    ssl_options = #{
-        ocsp_responder_certs := ResponderCerts
-    },
-    handshake_env = #handshake_env{
-        ocsp_stapling_state = #{ocsp_nonce := OcspNonce} = OcspState} = HsEnv
-} = State, Certs) ->
-    OcspRespDers = [maps:get(status_request, Extns) ||
-                    #certificate_entry{extensions = Extns} <- Certs,
-                    maps:is_key(status_request, Extns)],
-    State#state{handshake_env = HsEnv#handshake_env{
-        ocsp_stapling_state = OcspState#{
-        ocsp_stapling_result =>
-            [public_key:ocsp_status(R, ResponderCerts, OcspNonce) ||
-             R <- OcspRespDers]}
-    }}.
+%% TODO: Temporary fix until validation is implemented!
+%% check_ocsp(#state{
+%%     ssl_options = #{
+%%         ocsp_responder_certs := ResponderCerts
+%%     },
+%%     handshake_env = #handshake_env{
+%%         ocsp_stapling_state = #{ocsp_nonce := OcspNonce} = OcspState} = HsEnv
+%% } = State, Certs) ->
+%%     OcspRespDers = [maps:get(status_request, Extns) ||
+%%                     #certificate_entry{extensions = Extns} <- Certs,
+%%                     maps:is_key(status_request, Extns)],
+%%     State#state{handshake_env = HsEnv#handshake_env{
+%%         ocsp_stapling_state = OcspState#{
+%%         ocsp_stapling_result =>
+%%             [public_key:ocsp_status(R, ResponderCerts, OcspNonce) ||
+%%              R <- OcspRespDers]}
+%%                                  }}.
 
-is_ocsp_status_revoked(OcspStaplingState) ->
-    case maps:get(ocsp_stapling_result, OcspStaplingState, undefined) of
-        [{ok, [#'SingleResponse'{certStatus = {revoked, _RevokedInfo}}]}] ->
-            true;
-        _Other ->
-            false
-    end.
+
+%% is_ocsp_status_revoked(OcspStaplingState) ->
+%%     case maps:get(ocsp_stapling_result, OcspStaplingState, undefined) of
+%%         [{ok, [#'SingleResponse'{certStatus = {revoked, _RevokedInfo}}]}] ->
+%%             true;
+%%         _Other ->
+%%             false
+%%     end.
 
 %% TODO: check whole chain!
 is_supported_signature_algorithm(Certs, SignAlgs, undefined) ->
