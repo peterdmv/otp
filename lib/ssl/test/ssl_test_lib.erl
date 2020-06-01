@@ -76,10 +76,15 @@ init_ecdsa_certs(Config) ->
 
 %% Options
 get_server_opts(Config) ->
+    get_server_opts(openssl, Config).
+    %% DSOpts = proplists:get_value(server_ecdsa_opts, Config),
+    %% SOpts = proplists:get_value(server_opts, Config, DSOpts),
+    %% ssl_test_lib:ssl_options(SOpts, Config).
+%%
+get_server_opts(openssl, Config) ->
     DSOpts = proplists:get_value(server_ecdsa_opts, Config),
     SOpts = proplists:get_value(server_opts, Config, DSOpts),
-    ssl_test_lib:ssl_options(SOpts, Config).
-%%
+    ssl_test_lib:ssl_options(SOpts, Config);
 get_server_opts(openssl_ocsp, Config) ->
     PrivDir = proplists:get_value(priv_dir, Config),
     Cert = filename:join(PrivDir, "a.server/cert.pem"),
@@ -492,8 +497,8 @@ init_openssl_server(openssl, _, Options) ->
     openssl_server_loop(Pid, SslPort, Args).
 
 init_openssl_server(openssl_ocsp, ResponderPort, Options) ->
-    {ok, Version} = application:get_env(ssl,protocol_version),
-    %% Port = proplists:get_value(port, Options),
+    DefaultVersions = default_tls_version(Options),
+    [Version | _] = proplists:get_value(versions, Options, DefaultVersions),
     Port = inet_port(node()),
     Pid = proplists:get_value(from, Options),
 
@@ -512,12 +517,7 @@ init_openssl_server(openssl_ocsp, ResponderPort, Options) ->
     SslPort = ssl_test_lib:portable_open_port(Exe, Args),
     Pid ! {started, Port},
     Pid ! {self(), {port, Port}},
-    case openssl_server_started(SslPort) of
-        {true, StartBuffer} ->
-            openssl_server_loop(Pid, SslPort, Args, StartBuffer);
-        false ->
-            {error, openssl_server}
-    end.
+    openssl_server_loop(Pid, SslPort, Args).
 
 openssl_server_started(Port) ->
     openssl_server_started(Port, []).
@@ -532,7 +532,7 @@ openssl_server_started(Port, Data0) ->
             false
     end.
 
-openssl_server_loop(Pid, SslPort, Args, StartBuffer) ->
+openssl_server_loop(Pid, SslPort, Args) ->
     receive
         {data, Data} ->
             case port_command(SslPort, Data, [nosuspend]) of
@@ -545,9 +545,14 @@ openssl_server_loop(Pid, SslPort, Args, StartBuffer) ->
                            [self(), Data]),
                     Pid ! {self(), {error, port_command_failed}}
             end,
-            openssl_server_loop(Pid, SslPort, Args, []);
+            openssl_server_loop(Pid, SslPort, Args);
         {active_receive, Data} ->
-            re_active_recv(Pid, SslPort, Data, StartBuffer);
+            case active_recv(SslPort, length(Data)) of
+                ReceivedData ->
+                    ct:log("(~p) [openssl server] Received: ~p~n", [self(), Data]),
+                    Pid ! {self(), ReceivedData}
+            end,
+            openssl_server_loop(Pid, SslPort, Args);
         {update_keys, Type} ->
             case Type of
                 write ->
@@ -559,7 +564,7 @@ openssl_server_loop(Pid, SslPort, Args, StartBuffer) ->
                     true = port_command(SslPort, "K", [nosuspend]),
                     Pid ! {self(), ok}
             end,
-            openssl_server_loop(Pid, SslPort, Args, StartBuffer);
+            openssl_server_loop(Pid, SslPort, Args);
         close ->
             ct:log("~p:~p~n[openssl server] Server closing~n", [?MODULE,?LINE]),
             catch port_close(SslPort);
