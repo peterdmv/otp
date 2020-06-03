@@ -567,7 +567,7 @@ openssl_server_loop(Pid, SslPort, Args) ->
             openssl_server_loop(Pid, SslPort, Args);
         close ->
             ct:log("~p:~p~n[openssl server] Server closing~n", [?MODULE,?LINE]),
-            port_close(SslPort);
+            catch port_close(SslPort);
         {ssl_closed, _Socket} ->
             %% TODO
             ok
@@ -649,7 +649,7 @@ openssl_client_loop_core(Pid, SslPort, Args) ->
             openssl_client_loop_core(Pid, SslPort, Args);
         close ->
             ct:log("~p:~p~nClient closing~n", [?MODULE,?LINE]),
-            port_close(SslPort);
+            catch port_close(SslPort);
         {ssl_closed, _Socket} ->
             %% TODO
             ok
