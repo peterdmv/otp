@@ -632,7 +632,9 @@ init({call, From}, {start, Timeout},
                           handshake_env = HsEnv#handshake_env{
                               tls_handshake_history = Handshake},
                           start_or_recv_from = From,
-                          key_share = KeyShare},
+                          key_share = KeyShare
+                         , ssl_options = SslOpts %% comment this line to fix
+                         },
     State = tls_handshake_1_3:update_ocsp_state(
         OcspStaplingOpt, OcspNonce, State2),
     next_event(hello, no_record, State, [{{timeout, handshake}, Timeout, close}]);
