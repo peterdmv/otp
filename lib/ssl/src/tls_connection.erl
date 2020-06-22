@@ -625,6 +625,10 @@ init({call, From}, {start, Timeout},
     %% negotiated_version is also used by the TLS 1.3 state machine and is set after
     %% ServerHello is processed.
     RequestedVersion = tls_record:hello_version(Versions),
+
+    #state{ssl_options = S0} = State1,
+    ct:log("DEBUG0: ~p~n",[maps:get(use_ticket, S0)]),
+    %%ct:log("DEBUG1: ~p ~n", [State1]),
     State2 = State1#state{connection_states = ConnectionStates,
                           connection_env = CEnv#connection_env{
                                              negotiated_version = RequestedVersion},
@@ -635,6 +639,9 @@ init({call, From}, {start, Timeout},
                           key_share = KeyShare
                          , ssl_options = SslOpts %% comment this line to fix
                          },
+    #state{ssl_options = S2} = State2,
+    ct:log("DEBUG2: ~p~n",[maps:get(use_ticket, S2)]),
+    %%ct:log("DEBUG3: ~p~n", [State2]),
     State = tls_handshake_1_3:update_ocsp_state(
         OcspStaplingOpt, OcspNonce, State2),
     next_event(hello, no_record, State, [{{timeout, handshake}, Timeout, close}]);
