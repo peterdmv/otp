@@ -83,7 +83,8 @@
                         premaster_secret     :: binary() | secret_printout() | 'undefined',
                         server_psk_identity         :: binary() | 'undefined',  % server psk identity hint
                         ticket_seed,
-                        ocsp_stapling_state = #{}
+                        ocsp_stapling_state = #{ocsp_stapling => false, 
+                                                ocsp_expect => no_staple}
                        }).
 
 -record(connection_env, { 
