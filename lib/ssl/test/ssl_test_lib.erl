@@ -535,6 +535,15 @@ init_openssl_server(Mode, ResponderPort, Options) when Mode == openssl_ocsp orel
     Pid ! {self(), {port, Port}},
     openssl_server_loop(Pid, SslPort, Args).
 
+oscp_responder(Port, Index, CACerts, Cert, Key, Starter) ->
+    Args = ["ocsp", "-index", Index, "-CA", CACerts, "-rsigner", Cert,
+            "-rkey", Key, "-port",  erlang:integer_to_list(Port)],
+    Responder = ssl_test_lib:portable_open_port("openssl", Args),
+    wait_for_openssl_server(Port, tls),
+
+    openssl_server_loop(Starter, Responder, []).
+
+
 openssl_dtls_opt('dtlsv1.2') ->
     ["-dtls"];
 openssl_dtls_opt(_Other) ->
@@ -2673,6 +2682,8 @@ is_ipv6_supported() ->
         "OpenSSL 0.9.8" ++ _ -> % Does not support IPv6
             false;
         "OpenSSL 1.0" ++ _ ->   % Does not support IPv6
+            false;
+        "LibreSSL 3" ++ _->
             false;
         _ ->
             true
